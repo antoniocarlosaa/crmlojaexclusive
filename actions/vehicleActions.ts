@@ -207,6 +207,18 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
     });
 
     if (publishData.catalog_url) {
+      // Limpa espaços em branco e barras duplicadas no final da URL
+      let sanitizedUrl = publishData.catalog_url.trim().replace(/\/+$/, "");
+
+      // Correção automática se o usuário informou o link do site (/vehicles) em vez da rota de API (/api/vehicles)
+      if (sanitizedUrl.includes("catalogoexclusivemotos.vercel.app") && !sanitizedUrl.includes("/api/")) {
+        if (sanitizedUrl.endsWith("/vehicles")) {
+          sanitizedUrl = sanitizedUrl.replace("/vehicles", "/api/vehicles");
+        } else {
+          sanitizedUrl = `${sanitizedUrl}/api/vehicles`;
+        }
+      }
+
       const vehicle = await vehicleService.getFullDetails(db, vehicleId);
       if (vehicle) {
         const payload = {
@@ -224,9 +236,9 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
         };
 
         try {
-          console.log(`Sending publication to catalog: ${publishData.catalog_url}`, payload);
+          console.log(`Sending publication to catalog: ${sanitizedUrl}`, payload);
           
-          const response = await fetch(publishData.catalog_url, {
+          const response = await fetch(sanitizedUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

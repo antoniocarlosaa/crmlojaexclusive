@@ -936,11 +936,25 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const handleSaveCatalogSettings = (e: React.FormEvent) => {
     e.preventDefault();
     setSavingCatalogSettings(true);
-    localStorage.setItem("catalog_url", globalCatalogUrl);
+    
+    // Limpa espaços e barras duplicadas no final da URL
+    let sanitizedUrl = globalCatalogUrl.trim().replace(/\/+$/, "");
+
+    // Correção automática se o usuário informou o link do site (/vehicles) em vez da rota de API (/api/vehicles)
+    if (sanitizedUrl.includes("catalogoexclusivemotos.vercel.app") && !sanitizedUrl.includes("/api/")) {
+      if (sanitizedUrl.endsWith("/vehicles")) {
+        sanitizedUrl = sanitizedUrl.replace("/vehicles", "/api/vehicles");
+      } else {
+        sanitizedUrl = `${sanitizedUrl}/api/vehicles`;
+      }
+    }
+
+    setGlobalCatalogUrl(sanitizedUrl);
+    localStorage.setItem("catalog_url", sanitizedUrl);
     localStorage.setItem("catalog_token", globalCatalogToken);
     setTimeout(() => {
       setSavingCatalogSettings(false);
-      alert("Configurações de integração salvas com sucesso no navegador!");
+      alert("Configurações de integração salvas com sucesso no navegador! A URL foi corrigida e formatada automaticamente.");
     }, 500);
   };
 
