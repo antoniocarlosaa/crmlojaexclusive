@@ -2023,6 +2023,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                       <Label htmlFor="webhook-url">URL do Endpoint do Catálogo</Label>
                       <Input
                         id="webhook-url"
+                        type="url"
                         placeholder="https://api.seucatalogo.com/v1/vehicles"
                         value={globalCatalogUrl}
                         onChange={(e) => setGlobalCatalogUrl(e.target.value)}
