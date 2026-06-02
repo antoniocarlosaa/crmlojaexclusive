@@ -207,8 +207,8 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
     });
 
     if (publishData.catalog_url) {
-      // Limpa espaços em branco e barras duplicadas no final da URL
-      let sanitizedUrl = publishData.catalog_url.trim().replace(/\/+$/, "");
+      // Limpa espaços em branco, barras no final e converte tudo para minúsculo (evita erro 405 de URL em caixa alta)
+      let sanitizedUrl = publishData.catalog_url.trim().toLowerCase().replace(/\/+$/, "");
 
       // Correção automática se o usuário informou o link do site (/vehicles) em vez da rota de API (/api/vehicles)
       if (sanitizedUrl.includes("catalogoexclusivemotos.vercel.app") && !sanitizedUrl.includes("/api/")) {

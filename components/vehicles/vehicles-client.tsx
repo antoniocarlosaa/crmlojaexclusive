@@ -937,8 +937,8 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     e.preventDefault();
     setSavingCatalogSettings(true);
     
-    // Limpa espaços e barras duplicadas no final da URL
-    let sanitizedUrl = globalCatalogUrl.trim().replace(/\/+$/, "");
+    // Limpa espaços, barras duplicadas no final e converte tudo para minúsculo (evita erro 405 de URL em caixa alta)
+    let sanitizedUrl = globalCatalogUrl.trim().toLowerCase().replace(/\/+$/, "");
 
     // Correção automática se o usuário informou o link do site (/vehicles) em vez da rota de API (/api/vehicles)
     if (sanitizedUrl.includes("catalogoexclusivemotos.vercel.app") && !sanitizedUrl.includes("/api/")) {
