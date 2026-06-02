@@ -1140,7 +1140,8 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                 // Compute values for this vehicle
                 const appraisal = Number(detail?.appraisal_value || 0);
                 const expensesTotal = detail?.costs ? detail.costs.reduce((sum: number, c: VehicleCost) => sum + Number(c.value), 0) : 0;
-                const totalCost = appraisal + expensesTotal;
+                const totalInvested = expensesTotal;
+                const totalCost = appraisal + totalInvested;
                 const salePrice = Number(vehicle.value || 0);
                 const profit = salePrice - totalCost;
                 const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
@@ -1204,13 +1205,13 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                             <span className="font-bold text-foreground">{formatCurrency(appraisal)}</span>
                           </div>
                           <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground uppercase font-semibold">Custo Oficina</span>
+                            <span className="text-[9px] text-muted-foreground uppercase font-semibold">Custos e Despesas</span>
                             <span className="font-bold text-red-400">{formatCurrency(expensesTotal)}</span>
                           </div>
                           <div className="flex flex-col col-span-2 border-t border-border/10 pt-1.5">
                             <div className="flex justify-between items-center text-[10px] mb-1 font-semibold text-cyan-400">
                               <span>Total Investido:</span>
-                              <span>{formatCurrency(totalCost)}</span>
+                              <span>{formatCurrency(totalInvested)}</span>
                             </div>
                             <div className="flex justify-between items-center text-[11px] font-bold text-primary mb-1">
                               <span>Valor de Venda:</span>
@@ -1273,7 +1274,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                       <TableHead className="font-semibold">Modelo</TableHead>
                       <TableHead className="font-semibold">Placa</TableHead>
                       <TableHead className="font-semibold">Compra (Aval.)</TableHead>
-                      <TableHead className="font-semibold">Custo Oficina</TableHead>
+                      <TableHead className="font-semibold">Custos e Despesas</TableHead>
                       <TableHead className="font-semibold">Total Investido</TableHead>
                       <TableHead className="font-semibold">Preço Venda</TableHead>
                       <TableHead className="font-semibold">Margem / Lucro</TableHead>
@@ -1293,7 +1294,8 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                       // Compute values for this vehicle
                       const appraisal = Number(detail?.appraisal_value || 0);
                       const expensesTotal = detail?.costs ? detail.costs.reduce((sum: number, c: VehicleCost) => sum + Number(c.value), 0) : 0;
-                      const totalCost = appraisal + expensesTotal;
+                      const totalInvested = expensesTotal;
+                      const totalCost = appraisal + totalInvested;
                       const salePrice = Number(vehicle.value || 0);
                       const profit = salePrice - totalCost;
                       const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
@@ -1319,7 +1321,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                           
                           <TableCell className="font-semibold text-foreground">{formatCurrency(appraisal)}</TableCell>
                           <TableCell className="font-semibold text-red-400">{formatCurrency(expensesTotal)}</TableCell>
-                          <TableCell className="font-semibold text-cyan-400">{formatCurrency(totalCost)}</TableCell>
+                          <TableCell className="font-semibold text-cyan-400">{formatCurrency(totalInvested)}</TableCell>
                           <TableCell className="font-semibold text-primary">{formatCurrency(salePrice)}</TableCell>
                           <TableCell className={`font-bold ${profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                             {margin.toFixed(0)}% ({formatCurrency(profit)})
@@ -2952,9 +2954,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   - selectedVehicleCancellation;
 
                 const selectedVehicleExpensesTotal = selectedVehicle.costs ? selectedVehicle.costs.reduce((sum: number, c: any) => sum + Number(c.value), 0) : 0;
-                const selectedVehicleTotalInvestment = (selectedVehicle.appraisal_value || 0) + selectedVehicleExpensesTotal;
+                const selectedVehicleTotalInvestment = selectedVehicleExpensesTotal;
+                const selectedVehicleTotalCost = (selectedVehicle.appraisal_value || 0) + selectedVehicleExpensesTotal;
                 const selectedVehicleSalePrice = Number(selectedVehicle.value || 0);
-                const selectedVehicleProfit = selectedVehicleSalePrice - selectedVehicleTotalInvestment;
+                const selectedVehicleProfit = selectedVehicleSalePrice - selectedVehicleTotalCost;
                 const selectedVehicleMargin = selectedVehicleSalePrice > 0 ? (selectedVehicleProfit / selectedVehicleSalePrice) * 100 : 0;
 
                 return (
@@ -2998,7 +3001,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                       )}
                       
                       <div className="pt-2 border-t border-border/10 space-y-1">
-                        <p><span className="text-muted-foreground font-semibold">Custo Oficina (Manutenção):</span> <strong className="text-red-400">{formatCurrency(selectedVehicleExpensesTotal)}</strong></p>
+                        <p><span className="text-muted-foreground font-semibold">Custos e Despesas (Manutenção):</span> <strong className="text-red-400">{formatCurrency(selectedVehicleExpensesTotal)}</strong></p>
                         <p className="text-cyan-400 font-bold"><span className="text-muted-foreground">Total Investido (Estoque):</span> {formatCurrency(selectedVehicleTotalInvestment)}</p>
                         <p className="text-primary font-bold"><span className="text-muted-foreground">Preço de Venda Estimado:</span> {formatCurrency(selectedVehicleSalePrice)}</p>
                         <p className={`font-black ${selectedVehicleProfit >= 0 ? "text-emerald-400" : "text-red-400"}`}>

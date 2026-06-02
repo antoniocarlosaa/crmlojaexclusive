@@ -86,18 +86,54 @@ export async function getDashboardData() {
   // =========================================================================
   // CARREGAR E PROCESSAR PÓS-VENDA (GARANTIAS E REVISÕES)
   // =========================================================================
-  const companyContractIds = contracts.map(c => c.id);
+  const activeContractIds = contracts
+    .filter(
+      (c: any) =>
+        c.status !== "AGUARDANDO_INICIAR" &&
+        c.status !== "AGUARDANDO_COMPRADOR_FINALIZAR" &&
+        c.status !== "AGUARDANDO_VENDEDOR" &&
+        c.status !== "TRANSFERÊNCIA_CANCELADA"
+    )
+    .map(c => c.id);
   
   let activeWarranties = 0;
   let expiredWarranties = 0;
+  const activeWarrantiesList: any[] = [];
   
-  if (companyContractIds.length > 0) {
+  if (activeContractIds.length > 0) {
     const warrantiesSnap = await db.collection("contract_warranties").get();
     warrantiesSnap.docs.forEach(doc => {
       const wData = doc.data();
-      if (companyContractIds.includes(wData.contract_id)) {
+      if (activeContractIds.includes(wData.contract_id)) {
+        const contract = contracts.find(c => c.id === wData.contract_id);
+        const clientName = contract?.client?.name || "Cliente N/A";
+        const vehicleInfo = contract?.vehicle 
+          ? `${contract.vehicle.brand} ${contract.vehicle.model} (${contract.vehicle.plate})` 
+          : "Veículo N/A";
+
         if (wData.status === "ativa" || wData.status === "proxima_vencimento") {
           activeWarranties++;
+
+          let remainingDays = 0;
+          if (wData.end_date) {
+            const end = new Date(wData.end_date).getTime();
+            const now = new Date().getTime();
+            const diff = end - now;
+            remainingDays = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+          }
+
+          activeWarrantiesList.push({
+            id: doc.id,
+            contract_id: wData.contract_id,
+            contract_number: contract?.contract_number || "N/A",
+            clientName,
+            vehicleInfo,
+            type: wData.type || "motor_cambio",
+            start_date: wData.start_date ? wData.start_date.split("T")[0] : "N/A",
+            end_date: wData.end_date ? wData.end_date.split("T")[0] : "N/A",
+            remainingDays,
+            status: wData.status,
+          });
         } else {
           expiredWarranties++;
         }
@@ -109,11 +145,11 @@ export async function getDashboardData() {
   let completedReviewsCount = 0;
   const pendingReviewsList: any[] = [];
 
-  if (companyContractIds.length > 0) {
+  if (activeContractIds.length > 0) {
     const reviewsSnap = await db.collection("contract_reviews").get();
     reviewsSnap.docs.forEach(doc => {
       const rData = doc.data();
-      if (companyContractIds.includes(rData.contract_id)) {
+      if (activeContractIds.includes(rData.contract_id)) {
         const contract = contracts.find(c => c.id === rData.contract_id);
         const clientName = contract?.client?.name || "Cliente N/A";
         const vehicleInfo = contract?.vehicle 
@@ -145,7 +181,9 @@ export async function getDashboardData() {
   // =========================================================================
   const allContracts = contracts || [];
   const allVehicles = vehicles || [];
-  const entries = financialEntries || [];
+  const entries = (financialEntries || []).filter(
+    (entry: any) => !entry.contract_id || activeContractIds.includes(entry.contract_id)
+  );
 
   const soldContracts = allContracts.filter(
     (c: any) => 
@@ -328,19 +366,6 @@ export async function getDashboardData() {
       created_at: c.created_at
     }));
 
-  const recentTransactions = [...financialEntries]
-    .sort((a: any, b: any) => new Date(b.entry_date || 0).getTime() - new Date(a.entry_date || 0).getTime())
-    .slice(0, 5)
-    .map((t: any) => ({
-      id: t.id,
-      description: t.description,
-      amount: Number(t.amount || 0),
-      type: t.type,
-      category: t.category,
-      entry_date: t.entry_date,
-      payment_method: t.payment_method
-    }));
-
   return {
     kpis: {
       totalSold,
@@ -371,8 +396,20 @@ export async function getDashboardData() {
         { name: "Concluídas", value: completedReviewsCount },
       ],
       pendingReviewsList: pendingReviewsList.slice(0, 5),
+      activeWarrantiesList: activeWarrantiesList.slice(0, 5),
       recentContracts,
-      recentTransactions,
+      recentTransactions: [...entries]
+        .sort((a: any, b: any) => new Date(b.entry_date || 0).getTime() - new Date(a.entry_date || 0).getTime())
+        .slice(0, 5)
+        .map((t: any) => ({
+          id: t.id,
+          description: t.description,
+          amount: Number(t.amount || 0),
+          type: t.type,
+          category: t.category,
+          entry_date: t.entry_date,
+          payment_method: t.payment_method
+        })),
     },
   };
 }

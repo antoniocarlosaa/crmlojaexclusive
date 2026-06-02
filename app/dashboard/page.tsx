@@ -45,6 +45,7 @@ export default async function DashboardPage() {
         chartWarranties: [],
         chartReviews: [],
         pendingReviewsList: [],
+        activeWarrantiesList: [],
         recentContracts: [],
         recentTransactions: [],
       },

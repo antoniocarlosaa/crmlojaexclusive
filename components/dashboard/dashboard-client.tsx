@@ -69,6 +69,18 @@ interface DashboardClientProps {
         km_expected: number;
         status: string;
       }>;
+      activeWarrantiesList: Array<{
+        id: string;
+        contract_id: string;
+        contract_number: number;
+        clientName: string;
+        vehicleInfo: string;
+        type: string;
+        start_date: string;
+        end_date: string;
+        remainingDays: number;
+        status: string;
+      }>;
       recentContracts: Array<{
         id: string;
         contract_number: number;
@@ -367,7 +379,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
           <Card className="glass-card border-white/5">
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
-                <Wrench size={14} className="text-amber-400" /> Status de Revisões
+                <Wrench size={14} className="text-amber-400" /> Status de Trocas de Óleo
               </CardTitle>
             </CardHeader>
             <CardContent className="h-56 pb-2">
@@ -377,7 +389,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
                   <XAxis dataKey="name" stroke="#a1a1aa" fontSize={9} />
                   <YAxis stroke="#a1a1aa" fontSize={9} tickLine={false} />
                   <Tooltip
-                    formatter={(value) => [`${value} revisões`, "Total"]}
+                    formatter={(value) => [`${value} trocas`, "Total"]}
                     contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
                   />
                   <Bar dataKey="value" fill="#f59e0b" radius={[3, 3, 0, 0]}>
@@ -395,12 +407,12 @@ export function DashboardClient({ data }: DashboardClientProps) {
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
                 <AlertCircle size={14} className="text-primary animate-pulse" />
-                Lembretes de Revisão (Próximos)
+                Lembretes da Próxima Troca de Óleo (Pós-Venda)
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-2 flex-grow overflow-y-auto max-h-[220px]">
               {charts.pendingReviewsList.length === 0 ? (
-                <div className="text-center text-xs text-muted-foreground/40 py-12">Nenhuma revisão pendente agendada.</div>
+                <div className="text-center text-xs text-muted-foreground/40 py-12">Nenhuma troca de óleo pendente agendada.</div>
               ) : (
                 <div className="space-y-3">
                   {charts.pendingReviewsList.map((rev) => (
@@ -410,7 +422,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
                       className="block p-2 bg-black/30 border border-border/40 rounded hover:border-primary/40 transition-colors text-[10px] space-y-0.5 leading-snug"
                     >
                       <div className="flex items-center justify-between font-bold text-foreground">
-                        <span>Revisão #{rev.revisionNumber}</span>
+                        <span>Troca de Óleo #{rev.revisionNumber}</span>
                         <span className="text-[9px] text-primary">{formatMileage(rev.km_expected)} km</span>
                       </div>
                       <p className="text-muted-foreground font-sans truncate">Cliente: {rev.clientName}</p>
@@ -425,7 +437,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
       </div>
 
       {/* NEW SECTION: Transparência de Dados (Origem dos Gráficos) */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Contratos Recentes */}
         <Card className="glass-card border-white/5">
           <CardHeader className="pb-3">
@@ -467,6 +479,55 @@ export function DashboardClient({ data }: DashboardClientProps) {
                         </td>
                         <td className="py-2.5 text-right font-bold text-foreground">
                           {formatBRL(c.total_value)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Garantias Ativas (Origem do KPI de Garantias) */}
+        <Card className="glass-card border-white/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-cyan-400" /> Garantias Ativas (Origem do KPI de Garantias)
+            </CardTitle>
+            <CardDescription>As 5 garantias ativas mais recentes no pós-venda.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            {!charts.activeWarrantiesList || charts.activeWarrantiesList.length === 0 ? (
+              <div className="text-center text-xs text-muted-foreground/40 py-8 font-sans">Nenhuma garantia ativa cadastrada.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left font-mono text-[11px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                      <th className="pb-2">Contrato</th>
+                      <th className="pb-2">Cliente / Veículo</th>
+                      <th className="pb-2">Vencimento</th>
+                      <th className="pb-2 text-right">Prazo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-900/60">
+                    {charts.activeWarrantiesList.map((w) => (
+                      <tr key={w.id} className="hover:bg-zinc-900/10 transition-colors">
+                        <td className="py-2.5 font-bold">
+                          <Link href={`/contracts/${w.contract_id}`} className="text-primary hover:underline">
+                            #{w.contract_number}
+                          </Link>
+                        </td>
+                        <td className="py-2.5">
+                          <div className="text-foreground font-sans font-semibold">{w.clientName}</div>
+                          <div className="text-[9px] text-muted-foreground">{w.vehicleInfo}</div>
+                        </td>
+                        <td className="py-2.5 text-foreground font-sans">
+                          {w.end_date}
+                        </td>
+                        <td className={`py-2.5 text-right font-bold ${w.remainingDays <= 15 ? "text-rose-400" : "text-emerald-400"}`}>
+                          {w.remainingDays} dias
                         </td>
                       </tr>
                     ))}

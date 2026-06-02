@@ -658,7 +658,7 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
               </DialogTitle>
               <DialogDescription className="text-sm text-red-200">
                 Atenção! Esta ação apagará permanentemente todos os contratos, parcelas, clientes, 
-                lançamentos financeiros e logs da sua loja. Os veículos serão mantidos e resetados para o status "Disponível".
+                lançamentos financeiros e logs da sua loja. Os veículos serão mantidos e resetados para o status &quot;Disponível&quot;.
                 <strong>Essa ação NÃO poderá ser desfeita!</strong>
               </DialogDescription>
             </DialogHeader>
