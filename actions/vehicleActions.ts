@@ -206,10 +206,11 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
       details: { vehicle_id: vehicleId, publish_catalog: publishData.publish_catalog },
     });
 
-    if (publishData.publish_catalog && publishData.catalog_url) {
+    if (publishData.catalog_url) {
       const vehicle = await vehicleService.getFullDetails(db, vehicleId);
       if (vehicle) {
         const payload = {
+          id: vehicleId,
           brand: vehicle.brand,
           model: vehicle.model,
           year: vehicle.year,
@@ -218,6 +219,8 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
           color: vehicle.color,
           mileage: vehicle.mileage,
           version: vehicle.version || "",
+          plate: vehicle.plate,
+          publish_catalog: publishData.publish_catalog,
         };
 
         try {
@@ -234,15 +237,33 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
           
           if (!response.ok) {
             console.warn("External catalog endpoint returned non-ok status:", response.status);
+            revalidatePath("/vehicles");
+            return {
+              success: true,
+              catalogSynced: false,
+              catalogError: `Servidor externo retornou HTTP ${response.status}`,
+            };
           }
-        } catch (fetchError) {
+          
+          revalidatePath("/vehicles");
+          return { success: true, catalogSynced: true };
+        } catch (fetchError: any) {
           console.error("Failed to post vehicle to online catalog external endpoint:", fetchError);
+          revalidatePath("/vehicles");
+          return {
+            success: true,
+            catalogSynced: false,
+            catalogError: fetchError.message || "Erro de conexão/rede",
+          };
         }
       }
     }
+    
+    revalidatePath("/vehicles");
+    return { success: true, catalogSynced: false, catalogError: "URL do catálogo externa não informada" };
   }
 
   revalidatePath("/vehicles");
-  return success;
+  return { success: false };
 }
 

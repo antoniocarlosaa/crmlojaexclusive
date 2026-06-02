@@ -940,20 +940,38 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     localStorage.setItem("catalog_token", globalCatalogToken);
     setTimeout(() => {
       setSavingCatalogSettings(false);
+      alert("Configurações de integração salvas com sucesso no navegador!");
     }, 500);
   };
 
   // Handle publishing toggle per vehicle
   const handleTogglePublish = async (vehicleId: string, currentStatus: boolean) => {
+    const actionLabel = !currentStatus ? "publicar" : "despublicar";
     try {
-      await updateVehiclePublication(vehicleId, {
+      const res = await updateVehiclePublication(vehicleId, {
         publish_catalog: !currentStatus,
         catalog_url: globalCatalogUrl,
         catalog_token: globalCatalogToken,
       });
+
       queryClient.invalidateQueries({ queryKey: ["vehiclesWithDetails"] });
-    } catch (err) {
+
+      if (res && res.success) {
+        if (res.catalogSynced) {
+          alert(`Veículo ${!currentStatus ? "publicado" : "removido"} e sincronizado no catálogo online com sucesso!`);
+        } else {
+          if (res.catalogError && res.catalogError.includes("não informada")) {
+            alert(`Veículo ${!currentStatus ? "publicado" : "removido"} localmente. Configure a URL da API para ativar a sincronização automática.`);
+          } else {
+            alert(`Salvo localmente, mas falhou ao sincronizar com o catálogo online: ${res.catalogError || "Erro desconhecido"}. Verifique se a URL e o Token estão corretos.`);
+          }
+        }
+      } else {
+        alert(`Erro ao tentar ${actionLabel} o veículo no banco de dados local.`);
+      }
+    } catch (err: any) {
       console.error("Erro ao alterar status de publicação:", err);
+      alert(`Erro ao tentar ${actionLabel} o veículo: ${err.message || "Erro desconhecido"}`);
     }
   };
 
