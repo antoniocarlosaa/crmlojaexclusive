@@ -149,6 +149,7 @@ const vehicleSchema = z.object({
     crlv: z.boolean().default(false),
     power_of_attorney: z.boolean().default(false),
     clearance: z.boolean().default(false),
+    zero_km: z.boolean().default(false),
   }),
 
   // Débitos do veículo
@@ -339,6 +340,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
         crlv: false,
         power_of_attorney: false,
         clearance: false,
+        zero_km: false,
       },
 
       has_fines: false,
@@ -431,6 +433,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const calculatedRealEntryCost = numAppraisal;
 
   const plateValue = watch("plate");
+  const watchZeroKm = watch("items_delivered.zero_km");
 
   // Apply plate formatting dynamically
   useEffect(() => {
@@ -438,6 +441,31 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       setValue("plate", formatPlate(plateValue), { shouldValidate: true });
     }
   }, [plateValue, setValue]);
+
+  // Handle 0km vehicle rules
+  useEffect(() => {
+    if (watchZeroKm) {
+      setValue("mileage", 0);
+      setValue("condition", "nada_a_fazer");
+      setValue("has_fines", false);
+      setValue("fines_value", 0);
+      setValue("has_ipva", false);
+      setValue("ipva_value", 0);
+      setValue("has_financing", false);
+      setValue("financing_payout", 0);
+      setValue("notary_payment_type", "cliente_paga_fora");
+      setValue("notary_costs", 0);
+      setValue("has_broker", false);
+      setValue("broker_commission", 0);
+      setValue("has_power_of_attorney", false);
+      setValue("power_value", 0);
+      setValue("dispatch_fee", 0);
+      setValue("sale_intention_fee", 0);
+      setValue("registration_fee", 0);
+      setValue("transfer_fee", 0);
+      setValue("cancellation_fee", 0);
+    }
+  }, [watchZeroKm, setValue]);
 
   // Handle Photo additions (Base64 file or direct URL)
   const handleAddImageUrl = () => {
@@ -655,6 +683,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
             crlv: fullVehicle.items_delivered?.crlv || false,
             power_of_attorney: fullVehicle.items_delivered?.power_of_attorney || false,
             clearance: fullVehicle.items_delivered?.clearance || false,
+            zero_km: fullVehicle.items_delivered?.zero_km || false,
           },
 
           has_fines: fullVehicle.debts?.has_fines || false,
@@ -751,6 +780,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
         crlv: false,
         power_of_attorney: false,
         clearance: false,
+        zero_km: false,
       },
 
       has_fines: false,
@@ -2168,7 +2198,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
                   <div className="space-y-1.5">
                     <Label htmlFor="mileage">Quilometragem (KM)</Label>
-                    <Input id="mileage" type="text" placeholder="KM" {...register("mileage")} className="bg-black/30" />
+                    <Input id="mileage" type="text" placeholder="KM" {...register("mileage")} disabled={watchZeroKm} className="bg-black/30 disabled:opacity-60" />
                     {errors.mileage && <p className="text-xs text-destructive">{errors.mileage.message}</p>}
                   </div>
 
@@ -2278,6 +2308,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                       { key: "crlv", label: "CRLV" },
                       { key: "power_of_attorney", label: "Procuração" },
                       { key: "clearance", label: "Nada Consta (Débitos)" },
+                      { key: "zero_km", label: "Veículo 0km" },
                     ].map((item) => (
                       <div key={item.key} className="flex items-center justify-between p-2 rounded-lg bg-black/20 border border-border/20">
                         <Label htmlFor={`item-${item.key}`} className="text-xs cursor-pointer">{item.label}</Label>
@@ -2322,18 +2353,26 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
                       <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
-                      1. Valor de Avaliação (Base)
+                      {watchZeroKm ? "1. Valor de Compra (Base)" : "1. Valor de Avaliação (Base)"}
                     </div>
                     <div className="grid grid-cols-1 gap-4 bg-zinc-900/20 border border-zinc-900 p-4 rounded-lg">
                       <div className="space-y-1.5">
-                        <Label htmlFor="appraisal_value" className="text-xs text-muted-foreground font-semibold">Valor de Avaliação (R$) *</Label>
+                        <Label htmlFor="appraisal_value" className="text-xs text-muted-foreground font-semibold">
+                          {watchZeroKm ? "Valor de Compra (R$) *" : "Valor de Avaliação (R$) *"}
+                        </Label>
                         <Input id="appraisal_value" type="text" placeholder="0,00" {...register("appraisal_value")} className="bg-black/40 text-emerald-400 font-bold border-emerald-500/20 focus:border-emerald-500 h-9" />
-                        <p className="text-[9px] text-muted-foreground">Toda a operação de compra, contratos e taxas é calculada com base neste valor de avaliação.</p>
+                        <p className="text-[9px] text-muted-foreground">
+                          {watchZeroKm 
+                            ? "Preço bruto de aquisição do veículo pela concessionária." 
+                            : "Toda a operação de compra, contratos e taxas é calculada com base neste valor de avaliação."}
+                        </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Seção 2: Débitos e Regularizações */}
+                  {!watchZeroKm && (
+                    <>
+                      {/* Seção 2: Débitos e Regularizações */}
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
                       <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
@@ -2577,6 +2616,8 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                       </Card>
                     </div>
                   </div>
+                    </>
+                  )}
 
                   {/* Seção 5: Estado do Veículo (Consolidado) */}
                   <div className="space-y-3">
@@ -2589,10 +2630,11 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                         <div className="space-y-1.5">
                           <Label htmlFor="condition" className="text-xs text-muted-foreground">Status de Reparação/Preparação</Label>
                           <Select
-                            defaultValue={selectedVehicle?.condition || "nada_a_fazer"}
+                            disabled={watchZeroKm}
+                            value={watch("condition") || "nada_a_fazer"}
                             onValueChange={(val) => setValue("condition", val as any)}
                           >
-                            <SelectTrigger className="bg-black/40 border-zinc-800 text-foreground w-full h-9">
+                            <SelectTrigger className="bg-black/40 border-zinc-800 text-foreground w-full h-9 disabled:opacity-60">
                               <SelectValue placeholder="Estado" />
                             </SelectTrigger>
                             <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-xs">
@@ -2660,29 +2702,35 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                           Demonstrativo de Payout (Líquido Cliente)
                         </div>
                         <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-muted-foreground">Valor de Avaliação:</span>
+                          <span className="text-muted-foreground">
+                            {watchZeroKm ? "Valor de Compra:" : "Valor de Avaliação:"}
+                          </span>
                           <span className="font-bold text-foreground">{formatCurrency(numAppraisal)}</span>
                         </div>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-muted-foreground">(-) Multas e Débitos IPVA:</span>
-                          <span className="text-red-400">-{formatCurrency(numFines + numIpva)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-muted-foreground">(-) Quitação Bancária:</span>
-                          <span className="text-red-400">-{formatCurrency(numFinancing)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-muted-foreground">(-) Comissão Corretor:</span>
-                          <span className="text-red-400">-{formatCurrency(numBroker)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-muted-foreground">(-) Cartório (Dedução):</span>
-                          <span className="text-red-400">-{formatCurrency(numNotaryDiscount)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-muted-foreground">(-) Custo Procuração:</span>
-                          <span className="text-red-400">-{formatCurrency(numPower)}</span>
-                        </div>
+                        {!watchZeroKm && (
+                          <>
+                            <div className="flex justify-between items-center text-[11px]">
+                              <span className="text-muted-foreground">(-) Multas e Débitos IPVA:</span>
+                              <span className="text-red-400">-{formatCurrency(numFines + numIpva)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[11px]">
+                              <span className="text-muted-foreground">(-) Quitação Bancária:</span>
+                              <span className="text-red-400">-{formatCurrency(numFinancing)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[11px]">
+                              <span className="text-muted-foreground">(-) Comissão Corretor:</span>
+                              <span className="text-red-400">-{formatCurrency(numBroker)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[11px]">
+                              <span className="text-muted-foreground">(-) Cartório (Dedução):</span>
+                              <span className="text-red-400">-{formatCurrency(numNotaryDiscount)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[11px]">
+                              <span className="text-muted-foreground">(-) Custo Procuração:</span>
+                              <span className="text-red-400">-{formatCurrency(numPower)}</span>
+                            </div>
+                          </>
+                        )}
                         {(numDispatch > 0 || numSaleIntention > 0 || numRegistration > 0 || numTransfer > 0 || numCancellation > 0) && (
                           <div className="pt-2 border-t border-zinc-900/60 space-y-1.5">
                             <div className="text-[9px] font-bold text-muted-foreground uppercase">Outras Deduções de Taxas</div>

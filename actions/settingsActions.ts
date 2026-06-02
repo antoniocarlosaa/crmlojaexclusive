@@ -212,3 +212,40 @@ export async function resetCompanyData() {
     return { success: false, error: error.message };
   }
 }
+
+export async function clearAuditLogs() {
+  const user = await getCurrentUser();
+  if (!user || !user.company_id || user.role !== "admin") {
+    throw new Error("Não autorizado.");
+  }
+
+  try {
+    const companyId = user.company_id;
+
+    // Obter todos os logs da empresa
+    const logsSnap = await db.collection("logs")
+      .where("company_id", "==", companyId)
+      .get();
+    
+    if (!logsSnap.empty) {
+      const logsBatch = db.batch();
+      logsSnap.docs.forEach(doc => logsBatch.delete(doc.ref));
+      await logsBatch.commit();
+    }
+
+    // Gravar o log da ação de limpeza como o primeiro log após a limpeza
+    await auditService.logAction(db, {
+      user_id: user.id,
+      company_id: companyId,
+      action: "CLEAR_AUDIT_LOGS",
+      details: { cleared_by: user.name, timestamp: new Date().toISOString() }
+    });
+
+    revalidatePath("/settings");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Erro ao limpar logs de auditoria:", error);
+    return { success: false, error: error.message };
+  }
+}

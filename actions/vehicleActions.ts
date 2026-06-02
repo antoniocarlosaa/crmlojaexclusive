@@ -112,14 +112,22 @@ export async function deleteVehicle(id: string) {
     throw new Error("Não autorizado.");
   }
 
+  // Load vehicle details before deleting
+  const vehicle = await vehicleService.getById(db, id);
+
   const success = await vehicleService.delete(db, id);
 
-  if (success) {
+  if (success && vehicle) {
     await auditService.logAction(db, {
       user_id: user.id,
       company_id: user.company_id,
       action: "DELETE_VEHICLE",
-      details: { vehicle_id: id },
+      details: { 
+        vehicle_id: id,
+        brand: vehicle.brand,
+        model: vehicle.model,
+        plate: vehicle.plate
+      },
     });
   }
 

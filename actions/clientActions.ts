@@ -80,14 +80,21 @@ export async function deleteClient(id: string) {
     throw new Error("Não autorizado.");
   }
 
+  // Load client details before deleting
+  const client = await clientService.getById(db, id);
+
   const success = await clientService.delete(db, id);
 
-  if (success) {
+  if (success && client) {
     await auditService.logAction(db, {
       user_id: user.id,
       company_id: user.company_id,
       action: "DELETE_CLIENT",
-      details: { client_id: id },
+      details: { 
+        client_id: id,
+        name: client.name,
+        cpf: client.cpf
+      },
     });
   }
 

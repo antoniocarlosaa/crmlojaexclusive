@@ -53,7 +53,7 @@ const contractSchema = z.object({
   notes: z.string().optional(),
   
   // Novos campos
-  modality: z.enum(["vista", "financiada", "compra_venda", "repasse"]),
+  modality: z.enum(["vista", "financiada", "compra_venda", "repasse", "compra"]),
   former_owner_name: z.string().optional(),
   former_owner_cpf: z.string().optional(),
   delivery_km: z.coerce.number().min(0, "Quilometragem inválida"),
@@ -86,6 +86,13 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
   const [pixValState, setPixValState] = useState(0);
   const [creditVal, setCreditVal] = useState(0);
   const [debitVal, setDebitVal] = useState(0);
+
+  // Compra Modality states
+  const [purchaseAppraisedVal, setPurchaseAppraisedVal] = useState(0);
+  const [purchaseFinesVal, setPurchaseFinesVal] = useState(0);
+  const [purchaseDetranVal, setPurchaseDetranVal] = useState(0);
+  const [purchaseFinancingVal, setPurchaseFinancingVal] = useState(0);
+  const [purchaseDateVal, setPurchaseDateVal] = useState("");
 
   // Financiamento Banco
   const [selectedBank, setSelectedBank] = useState("SANTANDER");
@@ -136,11 +143,25 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
       notes: v.notes || "",
     });
     setValue("vehicle_id", v.id);
-    setValue("total_value", v.value);
-    setValue("delivery_km", v.mileage);
     setVehicleRegType("existing");
     setVehicleSearch(`${v.brand} ${v.model} (${v.plate})`);
     setShowVehicleResults(false);
+
+    if (modality !== "compra") {
+      setValue("total_value", v.value);
+    }
+
+    if (v.items_delivered?.zero_km) {
+      setValue("delivery_km", 0);
+      setValue("warranty_type", "personalizada");
+      setValue("warranty_period_days", 365);
+      setValue("warranty_text", "GARANTIA DA FABRICANTE: Veículo novo (0km), coberto integralmente pela garantia original fornecida diretamente pela fabricante, conforme prazos e termos constantes no manual de garantia entregue com o veículo.");
+    } else {
+      setValue("delivery_km", v.mileage);
+      setValue("warranty_type", "motor_cambio");
+      setValue("warranty_period_days", 90);
+      setValue("warranty_text", defaultWarrantyText);
+    }
   };
 
   const handleClearVehicleSearch = () => {
@@ -161,6 +182,9 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
     setValue("vehicle_id", "");
     setValue("total_value", 0);
     setValue("delivery_km", 0);
+    setValue("warranty_type", "motor_cambio");
+    setValue("warranty_period_days", 90);
+    setValue("warranty_text", defaultWarrantyText);
     setVehicleRegType("manual");
     setShowVehicleResults(false);
   };
@@ -245,22 +269,31 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
 
   const selectedClient = clients.find((c) => c.id === selectedClientId);
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
+  const isZeroKm = vehicleRegType === "existing" && selectedVehicle?.items_delivered?.zero_km;
 
   // Sincronizar valor do veículo selecionado do estoque com o formulário
   useEffect(() => {
     if (vehicleRegType === "existing" && selectedVehicle) {
-      setValue("total_value", selectedVehicle.value);
-      setValue("delivery_km", selectedVehicle.mileage);
+      if (modality !== "compra") {
+        setValue("total_value", selectedVehicle.value);
+      }
+      if (selectedVehicle.items_delivered?.zero_km) {
+        setValue("delivery_km", 0);
+      } else {
+        setValue("delivery_km", selectedVehicle.mileage);
+      }
     }
-  }, [selectedVehicleId, vehicleRegType, setValue, selectedVehicle]);
+  }, [selectedVehicleId, vehicleRegType, setValue, selectedVehicle, modality]);
 
   // Sincronizar valor do veículo manual com o formulário
   useEffect(() => {
     if (vehicleRegType === "manual") {
-      setValue("total_value", newVehicleData.value);
+      if (modality !== "compra") {
+        setValue("total_value", newVehicleData.value);
+      }
       setValue("delivery_km", newVehicleData.mileage);
     }
-  }, [newVehicleData.value, newVehicleData.mileage, vehicleRegType, setValue]);
+  }, [newVehicleData.value, newVehicleData.mileage, vehicleRegType, setValue, modality]);
 
   // Sincronizar valor do troco padrão devida ao cliente
   useEffect(() => {
@@ -287,16 +320,30 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
     }
   }, [newVehicleData.plate, vehicleRegType, vehicles]);
 
-  // Se for modalidade Repasse, atualizar o termo de garantia automaticamente
+  // Se for modalidade Repasse ou Compra, atualizar o termo de garantia automaticamente
   useEffect(() => {
     if (modality === "repasse") {
       setValue("warranty_period_days", 0);
+      setValue("warranty_type", "personalizada");
       setValue("warranty_text", "TERMO DE COMPRA NO ESTADO (SEM GARANTIA MUNICÍPAL OU DE PÁTIO): O comprador declara formalmente ter vistoriado o veículo e estar plenamente ciente de que a transação é realizada na modalidade de REPASSE, no estado de conservação em que se encontra, isento de garantias adicionais mecânicas de motor e caixa, assumindo inteiramente o custo de eventuais reparos ou manutenções.");
+    } else if (modality === "compra") {
+      setValue("warranty_period_days", 0);
+      setValue("warranty_type", "personalizada");
+      setValue("warranty_text", "CONTRATO DE COMPRA: Operação de aquisição de veículo pela concessionária. Não aplicável termo de garantia convencional.");
     } else {
-      setValue("warranty_period_days", 90);
-      setValue("warranty_text", defaultWarrantyText);
+      const isZeroKm = vehicleRegType === "existing" && selectedVehicle?.items_delivered?.zero_km;
+      if (isZeroKm) {
+        setValue("delivery_km", 0);
+        setValue("warranty_type", "personalizada");
+        setValue("warranty_period_days", 365);
+        setValue("warranty_text", "GARANTIA DA FABRICANTE: Veículo novo (0km), coberto integralmente pela garantia original fornecida diretamente pela fabricante, conforme prazos e termos constantes no manual de garantia entregue com o veículo.");
+      } else {
+        setValue("warranty_period_days", 90);
+        setValue("warranty_type", "motor_cambio");
+        setValue("warranty_text", defaultWarrantyText);
+      }
     }
-  }, [modality, setValue]);
+  }, [modality, setValue, selectedVehicle, vehicleRegType]);
 
   // Calcular PMT e financiamento
   useEffect(() => {
@@ -385,6 +432,32 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
           agreement += " Valor totalmente quitado no ato.";
         }
         payload.negotiation_agreement = agreement;
+      }
+
+      if (vals.modality === "compra") {
+        payload.total_value = purchaseAppraisedVal;
+        payload.appraised_value = purchaseAppraisedVal;
+        payload.fines_debt = purchaseFinesVal;
+        payload.detran_debt = purchaseDetranVal;
+        payload.bank_payout = purchaseFinancingVal;
+        payload.net_value = purchaseAppraisedVal - purchaseFinesVal - purchaseDetranVal - purchaseFinancingVal;
+        payload.purchase_date = purchaseDateVal || new Date().toISOString().split("T")[0];
+        
+        let agreement = `Contrato de Compra de Veículo. Valor de Compra/Avaliação Bruta: R$ ${formatCurrency(purchaseAppraisedVal)}.`;
+        const deductions = [];
+        if (purchaseFinesVal > 0) deductions.push(`Multas a pagar: R$ ${formatCurrency(purchaseFinesVal)}`);
+        if (purchaseDetranVal > 0) deductions.push(`Débitos Detran/IPVA: R$ ${formatCurrency(purchaseDetranVal)}`);
+        if (purchaseFinancingVal > 0) deductions.push(`Quitação de Financiamento: R$ ${formatCurrency(purchaseFinancingVal)}`);
+        
+        if (deductions.length > 0) {
+          agreement += ` Deduções retidas: ${deductions.join(", ")}.`;
+        }
+        agreement += ` Líquido a Pagar ao Cliente: R$ ${formatCurrency(payload.net_value)}.`;
+        payload.negotiation_agreement = agreement;
+        
+        payload.down_payment = 0;
+        payload.interest_rate = 0;
+        payload.installments_count = 1;
       }
 
       if (vals.modality === "financiada") {
@@ -517,7 +590,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
   const handleNextStep = () => {
     if (step === 1) {
       if (clientRegType === "existing" && !selectedClientId) {
-        alert("Selecione um cliente comprador ou cadastre um novo.");
+        alert(modality === "compra" ? "Selecione um cliente vendedor ou cadastre um novo." : "Selecione um cliente comprador ou cadastre um novo.");
         return;
       }
       if (clientRegType === "new" && (!newClientData.name || !newClientData.cpf)) {
@@ -536,9 +609,16 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
       }
       setStep(3);
     } else if (step === 3) {
-      if (totalValue <= 0) {
-        alert("Insira o valor total da venda.");
-        return;
+      if (modality === "compra") {
+        if (purchaseAppraisedVal <= 0) {
+          alert("Insira o valor de compra do veículo.");
+          return;
+        }
+      } else {
+        if (totalValue <= 0) {
+          alert("Insira o valor total da venda.");
+          return;
+        }
       }
       setStep(4);
     }
@@ -575,13 +655,16 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
             <div className="space-y-6">
               {/* Modalidade Cards */}
               <div className="space-y-2">
-                <Label className="text-sm font-semibold">1. Modalidade da Venda</Label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Label className="text-sm font-semibold">
+                  {modality === "compra" ? "1. Modalidade de Compra" : "1. Modalidade da Venda"}
+                </Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                   {[
                     { id: "vista", label: "Venda à Vista", desc: "Pagamento imediato" },
                     { id: "financiada", label: "Financiada", desc: "Financiamento bancário" },
                     { id: "compra_venda", label: "Compra e Venda", desc: "Envolve veículo na troca" },
                     { id: "repasse", label: "Repasse", desc: "Venda sem garantia de pátio" },
+                    { id: "compra", label: "Compra de Veículo", desc: "Loja adquirindo veículo" },
                   ].map((m) => (
                     <button
                       key={m.id}
@@ -603,7 +686,9 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
               {/* Toggle Cliente Existente / Novo */}
               <div className="space-y-4 border-t border-border/20 pt-4">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">2. Comprador</Label>
+                  <Label className="text-sm font-semibold">
+                    {modality === "compra" ? "2. Vendedor (Cliente)" : "2. Comprador"}
+                  </Label>
                   <div className="flex gap-2">
                     <Button
                       type="button"
@@ -998,386 +1083,214 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
 
           {/* STEP 3: Condições Financeiras */}
           {step === 3 && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <Label htmlFor="total_value" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Valor Acordado de Venda (R$)</Label>
-                  <Input
-                    id="total_value"
-                    type="number"
-                    step="0.01"
-                    {...register("total_value")}
-                    className="bg-black/30 text-lg font-bold text-foreground h-11"
-                  />
-                  {errors.total_value && <p className="text-xs text-destructive">{errors.total_value.message}</p>}
+            modality === "compra" ? (
+              <div className="space-y-6">
+                <div className="flex flex-col space-y-1 border-b border-border/20 pb-3">
+                  <h3 className="font-bold text-sm uppercase tracking-wider text-primary">Detalhamento Financeiro da Compra</h3>
+                  <span className="text-[11px] text-muted-foreground">Informe o valor bruto acordado para compra e as deduções a serem retidas pela loja.</span>
                 </div>
 
-                {modality !== "vista" && modality !== "compra_venda" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-1.5">
-                    <Label htmlFor="down_payment" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Entrada / Sinal (R$)</Label>
+                    <Label htmlFor="purchase_appraised" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Valor de Compra / Avaliação Bruta (R$) *</Label>
                     <Input
-                      id="down_payment"
+                      id="purchase_appraised"
                       type="number"
                       step="0.01"
-                      {...register("down_payment")}
-                      className="bg-black/30 text-lg font-bold text-emerald-400 h-11"
+                      value={purchaseAppraisedVal || ""}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setPurchaseAppraisedVal(val);
+                        setValue("total_value", val);
+                      }}
+                      className="bg-black/30 text-lg font-bold text-foreground h-11"
                     />
-                    {errors.down_payment && <p className="text-xs text-destructive">{errors.down_payment.message}</p>}
                   </div>
-                )}
 
-                {(modality === "vista" || modality === "repasse") && (
-                  <div className="col-span-1 sm:col-span-2 border-t border-border/20 pt-4 mt-2 space-y-6">
-                    <div className="flex flex-col space-y-1">
-                      <Label className="font-bold text-xs uppercase tracking-wider text-primary">1. Detalhamento do Pagamento no Ato (Entradas)</Label>
-                      <span className="text-[10px] text-muted-foreground">Informe os valores pagos pelo cliente no momento da venda.</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-1">
-                      <div className="space-y-1.5 text-xs">
-                        <Label htmlFor="cash_val">Espécie (Dinheiro) (R$)</Label>
-                        <Input
-                          id="cash_val"
-                          type="number"
-                          step="0.01"
-                          value={cashVal || ""}
-                          onChange={(e) => setCashVal(Number(e.target.value))}
-                          className="bg-black/30 h-10 text-foreground"
-                        />
-                      </div>
-                      <div className="space-y-1.5 text-xs">
-                        <Label htmlFor="pix_val">PIX (R$)</Label>
-                        <Input
-                          id="pix_val"
-                          type="number"
-                          step="0.01"
-                          value={pixValState || ""}
-                          onChange={(e) => setPixValState(Number(e.target.value))}
-                          className="bg-black/30 h-10 text-foreground"
-                        />
-                      </div>
-                      <div className="space-y-1.5 text-xs">
-                        <Label htmlFor="credit_val">Cartão de Crédito (R$)</Label>
-                        <Input
-                          id="credit_val"
-                          type="number"
-                          step="0.01"
-                          value={creditVal || ""}
-                          onChange={(e) => setCreditVal(Number(e.target.value))}
-                          className="bg-black/30 h-10 text-foreground"
-                        />
-                      </div>
-                      <div className="space-y-1.5 text-xs">
-                        <Label htmlFor="debit_val">Cartão de Débito (R$)</Label>
-                        <Input
-                          id="debit_val"
-                          type="number"
-                          step="0.01"
-                          value={debitVal || ""}
-                          onChange={(e) => setDebitVal(Number(e.target.value))}
-                          className="bg-black/30 h-10 text-foreground"
-                        />
-                      </div>
-                      <div className="space-y-1.5 text-xs col-span-2 sm:col-span-1">
-                        <Label htmlFor="card_surcharge">Juros / Acréscimo do Cartão (R$)</Label>
-                        <Input
-                          id="card_surcharge"
-                          type="number"
-                          step="0.01"
-                          placeholder="Juros adicionados ao cartão"
-                          value={cardSurcharge || ""}
-                          onChange={(e) => setCardSurcharge(Number(e.target.value))}
-                          className="bg-black/30 h-10 text-amber-400 font-bold"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-secondary/10 rounded-lg border border-border/40 space-y-3">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-muted-foreground">Valor Acordado do Veículo:</span>
-                        <span className="font-mono font-bold text-foreground">{formatCurrency(totalValue || 0)}</span>
-                      </div>
-                      {cardSurcharge > 0 && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-amber-400">Juros/Acréscimo do Cartão (+):</span>
-                          <span className="font-mono font-bold text-amber-400">+{formatCurrency(cardSurcharge)}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between text-xs border-t border-border/20 pt-2 font-bold">
-                        <span className="text-foreground">Total Geral a Quitar:</span>
-                        <span className="font-mono text-sm text-primary">{formatCurrency(Number(totalValue) + Number(cardSurcharge))}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-muted-foreground">Pago no Ato:</span>
-                        <span className="font-mono text-foreground">{formatCurrency(cashVal + pixValState + creditVal + debitVal)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs border-t border-border/20 pt-2 font-extrabold">
-                        <span className="text-muted-foreground">Saldo Restante a Quitar:</span>
-                        <span className={`font-mono text-sm ${
-                          (Number(totalValue) + Number(cardSurcharge) - (cashVal + pixValState + creditVal + debitVal)) > 0 ? "text-amber-400" : "text-emerald-400"
-                        }`}>
-                          {formatCurrency(Math.max(Number(totalValue) + Number(cardSurcharge) - (cashVal + pixValState + creditVal + debitVal), 0))}
-                        </span>
-                      </div>
-                    </div>
-
-                    {Math.max(Number(totalValue) + Number(cardSurcharge) - (cashVal + pixValState + creditVal + debitVal), 0) > 0 && (
-                      <div className="p-4 bg-zinc-950/40 rounded-lg border border-amber-500/20 space-y-4 animate-in fade-in duration-200">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                          ⚠️ Saldo Devedor Detalhado (A Pagar Depois)
-                        </h4>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          <div className="space-y-1.5 text-xs">
-                            <Label>Forma de Pagamento do Saldo *</Label>
-                            <Select
-                              value={remainingMethod}
-                              onValueChange={(val) => setRemainingMethod(val)}
-                            >
-                              <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-9 text-xs">
-                                <SelectValue placeholder="Escolha a forma" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-zinc-950 border border-border/40 text-foreground text-xs">
-                                <SelectItem value="pix">PIX</SelectItem>
-                                <SelectItem value="especie">Espécie (Dinheiro)</SelectItem>
-                                <SelectItem value="cartao_parcelado">Cartão Parcelado</SelectItem>
-                                <SelectItem value="promissoria">Promissória</SelectItem>
-                                <SelectItem value="cheque">Cheque</SelectItem>
-                                <SelectItem value="boleto">Boleto</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          
-                          <div className="space-y-1.5 text-xs">
-                            <Label>Quantidade de Parcelas *</Label>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={remainingInstallments}
-                              onChange={(e) => setRemainingInstallments(Number(e.target.value))}
-                              className="bg-black/30 h-9 text-foreground text-xs"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5 text-xs">
-                            <Label>Data Limite para Conclusão *</Label>
-                            <Input
-                              type="date"
-                              value={remainingDueDate}
-                              onChange={(e) => setRemainingDueDate(e.target.value)}
-                              className="bg-black/30 h-9 text-foreground text-xs text-muted-foreground"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-1.5 text-xs">
-                          <Label>Como foi acordado (Observações do Saldo Devedor)</Label>
-                          <Input
-                            type="text"
-                            placeholder="Ex: R$ 2.000 para pagar em 4x no cartão de juros por fora na data X"
-                            value={remainingNotes}
-                            onChange={(e) => setRemainingNotes(e.target.value)}
-                            className="bg-black/30 h-9 text-xs text-foreground"
-                          />
-                        </div>
-                      </div>
-                    )}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="purchase_date" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Data da Operação de Compra *</Label>
+                    <Input
+                      id="purchase_date"
+                      type="date"
+                      value={purchaseDateVal}
+                      onChange={(e) => setPurchaseDateVal(e.target.value)}
+                      className="bg-black/30 text-xs h-11 text-muted-foreground"
+                    />
                   </div>
-                )}
+                </div>
 
-                {modality === "financiada" && (
-                  <>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="installments_count" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Número de Parcelas *</Label>
+                <div className="border-t border-border/20 pt-4 space-y-4">
+                  <Label className="font-bold text-xs uppercase tracking-wider text-primary">Deduções de Dívidas / Encargos do Veículo</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="purchase_detran">IPVA / Licenciamento a Deduzir (R$)</Label>
                       <Input
-                        id="installments_count"
+                        id="purchase_detran"
                         type="number"
-                        {...register("installments_count")}
-                        className="bg-black/30 h-11 text-foreground"
+                        step="0.01"
+                        value={purchaseDetranVal || ""}
+                        onChange={(e) => setPurchaseDetranVal(Number(e.target.value))}
+                        className="bg-black/30 h-10 text-foreground"
                       />
-                      {errors.installments_count && <p className="text-xs text-destructive">{errors.installments_count.message}</p>}
                     </div>
-
-                    <div className="space-y-1.5 col-span-1 sm:col-span-2">
-                      <Label className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Banco Financiador *</Label>
-                      <Select
-                        value={selectedBank}
-                        onValueChange={(val) => setSelectedBank(val)}
-                      >
-                        <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-11">
-                          <SelectValue placeholder="Selecione o Banco" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-zinc-950 border border-border/40 text-foreground">
-                          {["SANTANDER", "PAN", "BV", "OMNI", "BRADESCO", "C6", "ITAU", "BANCO DO BRASIL", "Outro"].map((b) => (
-                            <SelectItem key={b} value={b}>{b}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="purchase_fines">Multas a Pagar a Deduzir (R$)</Label>
+                      <Input
+                        id="purchase_fines"
+                        type="number"
+                        step="0.01"
+                        value={purchaseFinesVal || ""}
+                        onChange={(e) => setPurchaseFinesVal(Number(e.target.value))}
+                        className="bg-black/30 h-10 text-foreground"
+                      />
                     </div>
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="purchase_financing">Quitação de Financiamento a Deduzir (R$)</Label>
+                      <Input
+                        id="purchase_financing"
+                        type="number"
+                        step="0.01"
+                        value={purchaseFinancingVal || ""}
+                        onChange={(e) => setPurchaseFinancingVal(Number(e.target.value))}
+                        className="bg-black/30 h-10 text-foreground"
+                      />
+                    </div>
+                  </div>
+                </div>
 
-                    {selectedBank === "Outro" && (
-                      <div className="space-y-1.5 col-span-1 sm:col-span-2 animate-in fade-in duration-200">
-                        <Label htmlFor="custom_bank" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Nome do Banco Financiador *</Label>
-                        <Input
-                          id="custom_bank"
-                          type="text"
-                          placeholder="Digite o nome do banco"
-                          value={customBank}
-                          onChange={(e) => setCustomBank(e.target.value)}
-                          className="bg-black/30 h-11 text-foreground"
-                        />
+                <div className="p-4 bg-zinc-950/60 rounded-lg border border-border/40 space-y-3 mt-6">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <DollarSign size={14} className="text-primary" /> Demonstrativo de Liquidação
+                  </h4>
+                  <div className="space-y-2 text-xs pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Valor de Avaliação / Compra Bruta:</span>
+                      <span className="font-semibold text-foreground">{formatCurrency(purchaseAppraisedVal)}</span>
+                    </div>
+                    {purchaseDetranVal > 0 && (
+                      <div className="flex items-center justify-between text-red-400">
+                        <span>Dedução IPVA / Licenciamento (-):</span>
+                        <span className="font-mono font-bold">-{formatCurrency(purchaseDetranVal)}</span>
                       </div>
                     )}
-                  </>
-                )}
+                    {purchaseFinesVal > 0 && (
+                      <div className="flex items-center justify-between text-red-400">
+                        <span>Dedução Multas (-):</span>
+                        <span className="font-mono font-bold">-{formatCurrency(purchaseFinesVal)}</span>
+                      </div>
+                    )}
+                    {purchaseFinancingVal > 0 && (
+                      <div className="flex items-center justify-between text-red-400">
+                        <span>Dedução Quitação Financiamento (-):</span>
+                        <span className="font-mono font-bold">-{formatCurrency(purchaseFinancingVal)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between border-t border-border/20 pt-2 font-bold text-sm">
+                      <span className="text-foreground">Líquido a Pagar ao Cliente:</span>
+                      <span className="font-mono text-emerald-400 font-extrabold text-lg">{formatCurrency(purchaseAppraisedVal - purchaseFinesVal - purchaseDetranVal - purchaseFinancingVal)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="total_value" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Valor Acordado de Venda (R$)</Label>
+                    <Input
+                      id="total_value"
+                      type="number"
+                      step="0.01"
+                      {...register("total_value")}
+                      className="bg-black/30 text-lg font-bold text-foreground h-11"
+                    />
+                    {errors.total_value && <p className="text-xs text-destructive">{errors.total_value.message}</p>}
+                  </div>
 
-                {modality === "compra_venda" && (
-                  <div className="col-span-1 sm:col-span-2 border-t border-border/20 pt-4 mt-2 space-y-6">
-                    <div className="space-y-3">
-                      <Label className="font-bold text-xs uppercase tracking-wider text-primary">1. Dados do Veículo Recebido na Troca</Label>
-                      <div className="grid grid-cols-3 gap-4">
+                  {modality !== "vista" && modality !== "compra_venda" && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="down_payment" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Entrada / Sinal (R$)</Label>
+                      <Input
+                        id="down_payment"
+                        type="number"
+                        step="0.01"
+                        {...register("down_payment")}
+                        className="bg-black/30 text-lg font-bold text-emerald-400 h-11"
+                      />
+                      {errors.down_payment && <p className="text-xs text-destructive">{errors.down_payment.message}</p>}
+                    </div>
+                  )}
+
+                  {(modality === "vista" || modality === "repasse") && (
+                    <div className="col-span-1 sm:col-span-2 border-t border-border/20 pt-4 mt-2 space-y-6">
+                      <div className="flex flex-col space-y-1">
+                        <Label className="font-bold text-xs uppercase tracking-wider text-primary">1. Detalhamento do Pagamento no Ato (Entradas)</Label>
+                        <span className="text-[10px] text-muted-foreground">Informe os valores pagos pelo cliente no momento da venda.</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-1">
                         <div className="space-y-1.5 text-xs">
-                          <Label>Marca e Modelo do Veículo *</Label>
+                          <Label htmlFor="cash_val">Espécie (Dinheiro) (R$)</Label>
                           <Input
-                            type="text"
-                            placeholder="Ex: Honda Biz 125"
-                            value={tradeBrandModel}
-                            onChange={(e) => setTradeBrandModel(e.target.value)}
-                            className="bg-black/30 h-10 text-foreground"
-                          />
-                        </div>
-                        <div className="space-y-1.5 text-xs">
-                          <Label>Placa do Veículo *</Label>
-                          <Input
-                            type="text"
-                            placeholder="Ex: HXX-9999"
-                            value={tradePlate}
-                            onChange={(e) => setTradePlate(e.target.value)}
-                            className="bg-black/30 h-10 text-foreground"
-                          />
-                        </div>
-                        <div className="space-y-1.5 text-xs">
-                          <Label>Valor de Avaliação (R$) *</Label>
-                          <Input
+                            id="cash_val"
                             type="number"
                             step="0.01"
-                            placeholder="Ex: 8500.00"
-                            value={tradeValue || ""}
-                            onChange={(e) => setTradeValue(Number(e.target.value))}
-                            className="bg-black/30 h-10 text-primary font-bold font-mono"
+                            value={cashVal || ""}
+                            onChange={(e) => setCashVal(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs">
+                          <Label htmlFor="pix_val">PIX (R$)</Label>
+                          <Input
+                            id="pix_val"
+                            type="number"
+                            step="0.01"
+                            value={pixValState || ""}
+                            onChange={(e) => setPixValState(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs">
+                          <Label htmlFor="credit_val">Cartão de Crédito (R$)</Label>
+                          <Input
+                            id="credit_val"
+                            type="number"
+                            step="0.01"
+                            value={creditVal || ""}
+                            onChange={(e) => setCreditVal(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs">
+                          <Label htmlFor="debit_val">Cartão de Débito (R$)</Label>
+                          <Input
+                            id="debit_val"
+                            type="number"
+                            step="0.01"
+                            value={debitVal || ""}
+                            onChange={(e) => setDebitVal(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs col-span-2 sm:col-span-1">
+                          <Label htmlFor="card_surcharge">Juros / Acréscimo do Cartão (R$)</Label>
+                          <Input
+                            id="card_surcharge"
+                            type="number"
+                            step="0.01"
+                            placeholder="Juros adicionados ao cartão"
+                            value={cardSurcharge || ""}
+                            onChange={(e) => setCardSurcharge(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-amber-400 font-bold"
                           />
                         </div>
                       </div>
-                    </div>
 
-                    {tradeValue <= (Number(totalValue) + Number(cardSurcharge)) ? (
-                      <>
-                        <div className="space-y-4 border-t border-border/20 pt-4">
-                          <Label className="font-bold text-xs uppercase tracking-wider text-primary">2. Detalhamento do Valor Restante (Complementos)</Label>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                            <div className="space-y-1.5 text-xs">
-                              <Label>Valor em Espécie (Dinheiro) (R$)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={tradeCash || ""}
-                                onChange={(e) => setTradeCash(Number(e.target.value))}
-                                className="bg-black/30 h-10 text-foreground"
-                              />
-                            </div>
-                            <div className="space-y-1.5 text-xs">
-                              <Label>Valor no PIX (R$)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={tradePix || ""}
-                                onChange={(e) => setTradePix(Number(e.target.value))}
-                                className="bg-black/30 h-10 text-foreground"
-                              />
-                            </div>
-                            <div className="space-y-1.5 text-xs">
-                              <Label>Valor no Cartão (R$)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={tradeCard || ""}
-                                onChange={(e) => setTradeCard(Number(e.target.value))}
-                                className="bg-black/30 h-10 text-foreground"
-                              />
-                            </div>
-                            <div className="space-y-1.5 text-xs">
-                              <Label>Financiado Bancário (R$)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={tradeFinanced || ""}
-                                onChange={(e) => setTradeFinanced(Number(e.target.value))}
-                                className="bg-black/30 h-10 text-foreground"
-                              />
-                            </div>
-                            <div className="space-y-1.5 text-xs col-span-2 sm:col-span-1">
-                              <Label htmlFor="card_surcharge_trade">Juros / Acréscimo do Cartão (R$)</Label>
-                              <Input
-                                id="card_surcharge_trade"
-                                type="number"
-                                step="0.01"
-                                placeholder="Juros adicionados ao cartão"
-                                value={cardSurcharge || ""}
-                                onChange={(e) => setCardSurcharge(Number(e.target.value))}
-                                className="bg-black/30 h-10 text-amber-400 font-bold"
-                              />
-                            </div>
-                          </div>
-
-                          {tradeFinanced > 0 && (
-                            <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-200">
-                              <div className="space-y-1.5 text-xs">
-                                <Label>Banco do Financiamento *</Label>
-                                <Select
-                                  value={tradeBank}
-                                  onValueChange={(val) => setTradeBank(val)}
-                                >
-                                  <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-10">
-                                    <SelectValue placeholder="Selecione o Banco" />
-                                  </SelectTrigger>
-                                  <SelectContent className="bg-zinc-950 border border-border/40 text-foreground">
-                                    {["SANTANDER", "PAN", "BV", "OMNI", "BRADESCO", "C6", "ITAU", "BANCO DO BRASIL", "Outro"].map((b) => (
-                                      <SelectItem key={b} value={b}>{b}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              {tradeBank === "Outro" && (
-                                <div className="space-y-1.5 text-xs">
-                                  <Label>Nome do Banco Financiador *</Label>
-                                  <Input
-                                    type="text"
-                                    placeholder="Nome do banco"
-                                    value={tradeCustomBank}
-                                    onChange={(e) => setTradeCustomBank(e.target.value)}
-                                    className="bg-black/30 h-10 text-foreground"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20 text-xs text-emerald-400">
-                        💡 O veículo de troca superou o valor de venda. Não são necessários complementos de pagamento do cliente. A diferença de <strong>{formatCurrency(tradeValue - (Number(totalValue) + Number(cardSurcharge)))}</strong> será devolvida pela loja ao cliente como troco/volta.
-                      </div>
-                    )}
-
-                    <div className="space-y-4 pt-2">
                       <div className="p-4 bg-secondary/10 rounded-lg border border-border/40 space-y-3">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-muted-foreground">Valor Acordado do Veículo Vendido:</span>
+                          <span className="font-semibold text-muted-foreground">Valor Acordado do Veículo:</span>
                           <span className="font-mono font-bold text-foreground">{formatCurrency(totalValue || 0)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-muted-foreground">Veículo da Troca Recebido (-):</span>
-                          <span className="font-mono text-emerald-400 font-bold">-{formatCurrency(tradeValue || 0)}</span>
                         </div>
                         {cardSurcharge > 0 && (
                           <div className="flex items-center justify-between text-xs">
@@ -1385,34 +1298,25 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                             <span className="font-mono font-bold text-amber-400">+{formatCurrency(cardSurcharge)}</span>
                           </div>
                         )}
-                        {tradeValue > (Number(totalValue) + Number(cardSurcharge)) ? (
-                          <div className="flex items-center justify-between text-xs border-t border-border/20 pt-2 font-bold text-emerald-400">
-                            <span>Troco/Volta Devido ao Cliente:</span>
-                            <span className="font-mono text-sm font-extrabold">{formatCurrency(tradeValue - (Number(totalValue) + Number(cardSurcharge)))}</span>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center justify-between text-xs border-t border-border/20 pt-2 font-bold">
-                              <span className="text-foreground">Total Restante a Quitar:</span>
-                              <span className="font-mono text-sm text-primary">{formatCurrency(Math.max(Number(totalValue) + Number(cardSurcharge) - tradeValue, 0))}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-semibold text-muted-foreground">Pago Complementar:</span>
-                              <span className="font-mono text-foreground">{formatCurrency(tradeCash + tradePix + tradeCard + tradeFinanced)}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-xs border-t border-border/20 pt-2 font-extrabold">
-                              <span className="text-muted-foreground">Saldo Restante a Quitar:</span>
-                              <span className={`font-mono text-sm ${
-                                (Number(totalValue) + Number(cardSurcharge) - (tradeValue + tradeCash + tradePix + tradeCard + tradeFinanced)) > 0 ? "text-amber-400" : "text-emerald-400"
-                              }`}>
-                                {formatCurrency(Math.max(Number(totalValue) + Number(cardSurcharge) - (tradeValue + tradeCash + tradePix + tradeCard + tradeFinanced), 0))}
-                              </span>
-                            </div>
-                          </>
-                        )}
+                        <div className="flex items-center justify-between text-xs border-t border-border/20 pt-2 font-bold">
+                          <span className="text-foreground">Total Geral a Quitar:</span>
+                          <span className="font-mono text-sm text-primary">{formatCurrency(Number(totalValue) + Number(cardSurcharge))}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-muted-foreground">Pago no Ato:</span>
+                          <span className="font-mono text-foreground">{formatCurrency(cashVal + pixValState + creditVal + debitVal)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs border-t border-border/20 pt-2 font-extrabold">
+                          <span className="text-muted-foreground">Saldo Restante a Quitar:</span>
+                          <span className={`font-mono text-sm ${
+                            (Number(totalValue) + Number(cardSurcharge) - (cashVal + pixValState + creditVal + debitVal)) > 0 ? "text-amber-400" : "text-emerald-400"
+                          }`}>
+                            {formatCurrency(Math.max(Number(totalValue) + Number(cardSurcharge) - (cashVal + pixValState + creditVal + debitVal), 0))}
+                          </span>
+                        </div>
                       </div>
 
-                      {tradeValue <= (Number(totalValue) + Number(cardSurcharge)) && Math.max(Number(totalValue) + Number(cardSurcharge) - (tradeValue + tradeCash + tradePix + tradeCard + tradeFinanced), 0) > 0 && (
+                      {Math.max(Number(totalValue) + Number(cardSurcharge) - (cashVal + pixValState + creditVal + debitVal), 0) > 0 && (
                         <div className="p-4 bg-zinc-950/40 rounded-lg border border-amber-500/20 space-y-4 animate-in fade-in duration-200">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                             ⚠️ Saldo Devedor Detalhado (A Pagar Depois)
@@ -1428,7 +1332,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                                 <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-9 text-xs">
                                   <SelectValue placeholder="Escolha a forma" />
                                 </SelectTrigger>
-                                <SelectContent className="bg-zinc-950 border-border/40 text-foreground text-xs">
+                                <SelectContent className="bg-zinc-950 border border-border/40 text-foreground text-xs">
                                   <SelectItem value="pix">PIX</SelectItem>
                                   <SelectItem value="especie">Espécie (Dinheiro)</SelectItem>
                                   <SelectItem value="cartao_parcelado">Cartão Parcelado</SelectItem>
@@ -1465,7 +1369,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                             <Label>Como foi acordado (Observações do Saldo Devedor)</Label>
                             <Input
                               type="text"
-                              placeholder="Ex: Restante pago em parcelas diretas ou cheque"
+                              placeholder="Ex: R$ 2.000 para pagar em 4x no cartão de juros por fora na data X"
                               value={remainingNotes}
                               onChange={(e) => setRemainingNotes(e.target.value)}
                               className="bg-black/30 h-9 text-xs text-foreground"
@@ -1473,79 +1377,6 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                           </div>
                         </div>
                       )}
-
-                      {tradeValue > (Number(totalValue) + Number(cardSurcharge)) && (
-                        <div className="p-4 bg-zinc-950/40 rounded-lg border border-emerald-500/20 space-y-4 animate-in fade-in duration-200">
-                          <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                            💸 Troco / Volta Devido ao Cliente (Saldo Credor)
-                          </h4>
-                          
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div className="space-y-1.5 text-xs">
-                              <Label>Forma de Devolução *</Label>
-                              <Select
-                                value={tradeRefundMethod}
-                                onValueChange={(val) => setTradeRefundMethod(val)}
-                              >
-                                <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-9 text-xs">
-                                  <SelectValue placeholder="Escolha a forma" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-zinc-950 border-border/40 text-foreground text-xs">
-                                  <SelectItem value="pix">PIX</SelectItem>
-                                  <SelectItem value="especie">Espécie (Dinheiro)</SelectItem>
-                                  <SelectItem value="transferencia">Transferência Bancária</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            
-                            <div className="space-y-1.5 text-xs">
-                              <Label>Valor do Troco a Pagar (R$) *</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={tradeRefundValue || ""}
-                                onChange={(e) => setTradeRefundValue(Number(e.target.value))}
-                                className="bg-black/30 h-9 text-foreground text-xs font-mono font-bold text-emerald-400"
-                              />
-                            </div>
-
-                            <div className="space-y-1.5 text-xs">
-                              <Label>Data de Devolução Agendada *</Label>
-                              <Input
-                                type="date"
-                                value={tradeRefundDueDate}
-                                onChange={(e) => setTradeRefundDueDate(e.target.value)}
-                                className="bg-black/30 h-9 text-foreground text-xs text-muted-foreground"
-                              />
-                            </div>
-                          </div>
-
-                          {(tradeRefundMethod === "pix" || tradeRefundMethod === "transferencia") && (
-                            <div className="space-y-1.5 text-xs animate-in fade-in duration-200">
-                              <Label>Chave PIX / Dados da Conta do Cliente *</Label>
-                              <Input
-                                type="text"
-                                placeholder="Insira a chave PIX ou banco, agência e conta do cliente"
-                                value={tradeRefundPixKey}
-                                onChange={(e) => setTradeRefundPixKey(e.target.value)}
-                                className="bg-black/30 h-9 text-xs text-foreground"
-                              />
-                            </div>
-                          )}
-
-                          <div className="space-y-1.5 text-xs">
-                            <Label>Como foi acordado (Observações do Troco/Volta)</Label>
-                            <Input
-                              type="text"
-                              placeholder="Ex: Diferença paga via Pix agendado após vistoria"
-                              value={tradeRefundNotes}
-                              onChange={(e) => setTradeRefundNotes(e.target.value)}
-                              className="bg-black/30 h-9 text-xs text-foreground"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 )}
               </div>
@@ -1655,7 +1486,8 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 </div>
               )}
             </div>
-          )}
+          )
+        )}
 
           {/* STEP 4: Termos, Garantia & Entrega */}
           {step === 4 && (
@@ -1666,8 +1498,9 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                   <Input
                     id="delivery_km"
                     type="number"
+                    readOnly={isZeroKm}
                     {...register("delivery_km")}
-                    className="bg-black/30 text-xs h-9"
+                    className={`bg-black/30 text-xs h-9 ${isZeroKm ? "opacity-70 cursor-not-allowed" : ""}`}
                   />
                   <p className="text-[10px] text-muted-foreground/60">
                     Calcula automaticamente as trocas de óleo de 500, 1000 e 2000 km.
@@ -1679,14 +1512,14 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                   <Input
                     id="warranty_period_days"
                     type="number"
-                    disabled={modality === "repasse"}
+                    disabled={modality === "repasse" || modality === "compra"}
                     {...register("warranty_period_days")}
-                    className="bg-black/30 text-xs h-9"
+                    className={`bg-black/30 text-xs h-9 ${(modality === "repasse" || modality === "compra") ? "opacity-70 cursor-not-allowed" : ""}`}
                   />
                 </div>
               </div>
 
-              {modality !== "repasse" && (
+              {modality !== "repasse" && modality !== "compra" && (
                 <div className="space-y-1.5">
                   <Label>Tipo de Garantia Concedida</Label>
                   <Select
@@ -1704,15 +1537,17 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="warranty_text">Texto de Cláusula de Garantia *</Label>
-                <Textarea
-                  id="warranty_text"
-                  rows={4}
-                  {...register("warranty_text")}
-                  className="bg-black/30 border-border/40 text-xs leading-relaxed"
-                />
-              </div>
+              {modality !== "compra" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="warranty_text">Texto de Cláusula de Garantia *</Label>
+                  <Textarea
+                    id="warranty_text"
+                    rows={4}
+                    {...register("warranty_text")}
+                    className="bg-black/30 border-border/40 text-xs leading-relaxed"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <Label htmlFor="notes">Observações do Contrato</Label>
@@ -1809,6 +1644,8 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 ? "CONTRATO DE COMPRA E VENDA DE VEÍCULO COM FINANCIAMENTO"
                 : modality === "repasse"
                 ? "TERMO DE COMPRA E VENDA DE VEÍCULO NO ESTADO (REPASSE)"
+                : modality === "compra"
+                ? "CONTRATO DE COMPRA DE VEÍCULO (AQUISIÇÃO)"
                 : "CONTRATO DE COMPRA E VENDA DE VEÍCULO"}
             </span>
             <span className="text-[9px] text-primary border border-primary/30 px-1 py-0.5 rounded mt-1 font-normal uppercase font-sans">
@@ -1819,12 +1656,26 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
           <p>
             <strong>PARTES:</strong>
             <br />
-            - <strong>VENDEDOR:</strong> Empresa Cadastrada (conforme Configurações).
-            <br />
-            - <strong>COMPRADOR:</strong> {clientRegType === "existing" ? (
-              selectedClient ? <span className="text-foreground underline">{selectedClient.name} (CPF: {formatCPF(selectedClient.cpf)})</span> : <span className="italic text-muted-foreground/45">[Selecione o Comprador]</span>
+            {modality === "compra" ? (
+              <>
+                - <strong>VENDEDOR (CLIENTE):</strong> {clientRegType === "existing" ? (
+                  selectedClient ? <span className="text-foreground underline">{selectedClient.name} (CPF: {formatCPF(selectedClient.cpf)})</span> : <span className="italic text-muted-foreground/45">[Selecione o Vendedor]</span>
+                ) : (
+                  newClientData.name ? <span className="text-foreground underline">{newClientData.name} (CPF: {newClientData.cpf})</span> : <span className="italic text-muted-foreground/45">[Preencha os dados do vendedor]</span>
+                )}
+                <br />
+                - <strong>COMPRADOR:</strong> Empresa Cadastrada (conforme Configurações).
+              </>
             ) : (
-              newClientData.name ? <span className="text-foreground underline">{newClientData.name} (CPF: {newClientData.cpf})</span> : <span className="italic text-muted-foreground/45">[Preencha os dados do cliente]</span>
+              <>
+                - <strong>VENDEDOR:</strong> Empresa Cadastrada (conforme Configurações).
+                <br />
+                - <strong>COMPRADOR:</strong> {clientRegType === "existing" ? (
+                  selectedClient ? <span className="text-foreground underline">{selectedClient.name} (CPF: {formatCPF(selectedClient.cpf)})</span> : <span className="italic text-muted-foreground/45">[Selecione o Comprador]</span>
+                ) : (
+                  newClientData.name ? <span className="text-foreground underline">{newClientData.name} (CPF: {newClientData.cpf})</span> : <span className="italic text-muted-foreground/45">[Preencha os dados do cliente]</span>
+                )}
+              </>
             )}
           </p>
 
@@ -1946,6 +1797,32 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                     )}
                   </>
                 )}
+              </>
+            )}
+            {modality === "compra" && (
+              <>
+                <br />
+                - Valor de Compra / Avaliação Bruta: <strong>{formatCurrency(purchaseAppraisedVal)}</strong>
+                {purchaseDetranVal > 0 && (
+                  <>
+                    <br />
+                    - Dedução IPVA/Detran (-): <strong>{formatCurrency(purchaseDetranVal)}</strong>
+                  </>
+                )}
+                {purchaseFinesVal > 0 && (
+                  <>
+                    <br />
+                    - Dedução Multas (-): <strong>{formatCurrency(purchaseFinesVal)}</strong>
+                  </>
+                )}
+                {purchaseFinancingVal > 0 && (
+                  <>
+                    <br />
+                    - Dedução Quitação de Financiamento (-): <strong>{formatCurrency(purchaseFinancingVal)}</strong>
+                  </>
+                )}
+                <br />
+                - Líquido a Pagar ao Cliente: <strong className="text-emerald-400">{formatCurrency(purchaseAppraisedVal - purchaseFinesVal - purchaseDetranVal - purchaseFinancingVal)}</strong>
               </>
             )}
           </p>

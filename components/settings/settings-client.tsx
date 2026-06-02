@@ -4,7 +4,7 @@ import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateCompanyDetails, createEmployee, deleteEmployee, resetCompanyData } from "@/actions/settingsActions";
+import { updateCompanyDetails, createEmployee, deleteEmployee, resetCompanyData, clearAuditLogs } from "@/actions/settingsActions";
 import { UserRole, AuditLog } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,53 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { formatDate } from "@/utils/formatters";
+
+const renderActionDescription = (log: any) => {
+  const details = log.details || {};
+  switch (log.action) {
+    case "CREATE_CLIENT":
+      return `Cadastrou o cliente: ${details.client_name || details.name || "N/A"}`;
+    case "UPDATE_CLIENT":
+      return `Atualizou dados do cliente ID: ${details.client_id || "N/A"} (Campos: ${(details.updated_fields || []).join(", ") || "N/A"})`;
+    case "DELETE_CLIENT":
+      return `Excluiu o cliente: ${details.name || "N/A"} (CPF: ${details.cpf || "N/A"})`;
+      
+    case "CREATE_CONTRACT":
+      return `Criou o contrato de número: ${details.contract_number || "N/A"} (Modalidade: ${details.modality || "N/A"})`;
+    case "UPDATE_CONTRACT":
+      return `Atualizou o contrato de número: ${details.contract_number || "N/A"} (Status: ${details.status || "N/A"})`;
+    case "DELETE_CONTRACT":
+      return `Excluiu o contrato nº: ${details.contract_number || "N/A"} (Cliente: ${details.client_name || "N/A"}, Veículo: ${details.vehicle_model || ""} - Placa: ${details.vehicle_plate || ""})`;
+    case "ADD_SIGNATURE":
+    case "REGISTER_SIGNATURE":
+      return `Registrou assinatura no contrato de número: ${details.contract_number || "N/A"} (${details.role || "N/A"})`;
+      
+    case "CREATE_VEHICLE":
+      return `Cadastrou o veículo: ${details.brand || ""} ${details.model || ""} (Placa: ${details.plate || "N/A"})`;
+    case "UPDATE_VEHICLE":
+      return `Atualizou dados do veículo ID: ${details.vehicle_id || "N/A"} (Campos: ${(details.updated_fields || []).join(", ") || "N/A"})`;
+    case "DELETE_VEHICLE":
+      return `Excluiu o veículo: ${details.brand || ""} ${details.model || ""} (Placa: ${details.plate || "N/A"})`;
+
+    case "CREATE_FINANCIAL_ENTRY":
+      return `Registrou lançamento financeiro (${details.type || "N/A"}): ${details.description || "N/A"} no valor de R$ ${details.amount || 0}`;
+    case "DELETE_FINANCIAL_ENTRY":
+      return `Excluiu lançamento financeiro ID: ${details.entry_id || "N/A"}`;
+
+    case "RESET_COMPANY_DATA":
+      return `Realizou reset geral dos dados do sistema`;
+    case "CLEAR_AUDIT_LOGS":
+      return `Limpou os logs de auditoria da concessionária`;
+
+    case "CREATE_TRANSFER_PROCESS":
+      return `Iniciou processo de transferência para o contrato ID: ${details.contract_id || "N/A"}`;
+    case "UPDATE_TRANSFER_STATUS":
+      return `Atualizou status de transferência para: ${details.new_status || "N/A"}`;
+
+    default:
+      return log.action + (log.details ? ` - ${JSON.stringify(log.details)}` : "");
+  }
+};
 
 interface SettingsClientProps {
   company: {
@@ -97,6 +144,25 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [isResetting, setIsResetting] = useState(false);
+
+  const handleClearLogs = async () => {
+    if (!confirm("Tem certeza que deseja limpar permanentemente todos os logs de auditoria da sua concessionária? Esta ação não pode ser desfeita.")) {
+      return;
+    }
+    
+    try {
+      const res = await clearAuditLogs();
+      if (res.success) {
+        alert("Logs de auditoria limpos com sucesso!");
+        setAuditLogs([]);
+        router.refresh();
+      } else {
+        alert(`Erro ao limpar logs: ${res.error}`);
+      }
+    } catch (err: any) {
+      alert(`Erro inesperado: ${err.message}`);
+    }
+  };
 
   const handleResetSystem = async () => {
     if (resetConfirmText !== "ZERAR") {
@@ -235,7 +301,7 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-lg bg-zinc-900 border border-border/40 p-1 rounded-lg">
+        <TabsList className="grid grid-cols-1 sm:grid-cols-3 w-full max-w-lg bg-zinc-900 border border-border/40 p-1 rounded-lg h-auto gap-1">
           <TabsTrigger value="company" className="rounded-md font-semibold text-xs gap-1.5">
             <Building2 size={14} /> Dados da Loja
           </TabsTrigger>
@@ -550,13 +616,24 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
         {/* AUDITORIA E LOGS */}
         <TabsContent value="auditoria" className="mt-4 space-y-6">
           <Card className="glass-card border-white/5">
-            <CardHeader className="pb-3 border-b border-border/40">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                <ShieldCheck size={16} /> Registro de Atividades (Auditoria)
-              </CardTitle>
-              <CardDescription>
-                Histórico detalhado das ações executadas pelos usuários no sistema para fins de auditoria interna.
-              </CardDescription>
+            <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <ShieldCheck size={16} /> Registro de Atividades (Auditoria)
+                </CardTitle>
+                <CardDescription>
+                  Histórico detalhado das ações executadas pelos usuários no sistema para fins de auditoria interna.
+                </CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleClearLogs}
+                className="text-xs h-8 border-red-500/30 text-red-400 hover:bg-red-950/20 hover:text-red-300"
+              >
+                Limpar Logs
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
               <div className="max-h-[400px] overflow-y-auto">
@@ -600,8 +677,8 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
                               {log.user_agent}
                             </span>
                           </TableCell>
-                          <TableCell className="font-mono text-[10px] text-muted-foreground max-w-xs truncate" title={JSON.stringify(log.details)}>
-                            {log.details ? JSON.stringify(log.details) : "-"}
+                          <TableCell className="text-foreground max-w-md font-medium" title={log.details ? JSON.stringify(log.details) : undefined}>
+                            {renderActionDescription(log)}
                           </TableCell>
                         </TableRow>
                       ))

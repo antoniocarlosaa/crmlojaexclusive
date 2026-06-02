@@ -256,14 +256,23 @@ export async function deleteContract(id: string) {
     throw new Error("Não autorizado.");
   }
 
+  // Load contract details before deleting
+  const contract = await contractService.getById(db, id);
+
   const success = await contractService.delete(db, id);
 
-  if (success) {
+  if (success && contract) {
     await auditService.logAction(db, {
       user_id: user.id,
       company_id: user.company_id,
       action: "DELETE_CONTRACT",
-      details: { contract_id: id },
+      details: { 
+        contract_id: id,
+        contract_number: contract.contract_number,
+        client_name: contract.client?.name || "Desconhecido",
+        vehicle_plate: contract.vehicle?.plate || "Desconhecida",
+        vehicle_model: contract.vehicle?.model || "Desconhecido"
+      },
     });
   }
 

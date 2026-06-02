@@ -77,6 +77,7 @@ export interface Vehicle {
     crlv: boolean;
     power_of_attorney: boolean;
     clearance: boolean;
+    zero_km?: boolean;
   };
   dispatch_fee?: number;
   sale_intention_fee?: number;
