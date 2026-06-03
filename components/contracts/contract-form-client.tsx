@@ -478,7 +478,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
         payload.interest_rate = 0;
         payload.installments_count = 1;
         
-        let agreement = `Contrato de Consignação. Valor Estimado de Venda: R$ ${formatCurrency(vals.total_value)}. Prazo de Consignação: ${vals.consignation_period_days} dias. Valor Líquido Garantido ao Proprietário: R$ ${formatCurrency(vals.consignation_owner_value)}. Comissão Estimada da Loja: R$ ${formatCurrency(Math.max(vals.total_value - vals.consignation_owner_value, 0))}.`;
+        const agreement = `Contrato de Consignação. Valor Estimado de Venda: R$ ${formatCurrency(vals.total_value)}. Prazo de Consignação: ${vals.consignation_period_days} dias. Valor Líquido Garantido ao Proprietário: R$ ${formatCurrency(vals.consignation_owner_value)}. Comissão Estimada da Loja: R$ ${formatCurrency(Math.max(vals.total_value - vals.consignation_owner_value, 0))}.`;
         payload.negotiation_agreement = agreement;
       }
 
