@@ -227,7 +227,7 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
           model: vehicle.model,
           year: vehicle.year,
           value: vehicle.value,
-          photos: vehicle.photos,
+          photos: (vehicle.photos_ready && vehicle.photos_ready.length > 0) ? vehicle.photos_ready : (vehicle.photos || []),
           color: vehicle.color,
           mileage: vehicle.mileage,
           version: vehicle.version || "",

@@ -110,6 +110,9 @@ export async function createContract(contractData: any) {
       seller_representative_type: contractData.seller_representative_type || undefined,
       broker_name: contractData.broker_name || undefined,
       broker_phone: contractData.broker_phone || undefined,
+      // Campos de Consignação
+      consignation_period_days: contractData.consignation_period_days ? Number(contractData.consignation_period_days) : undefined,
+      consignation_owner_value: contractData.consignation_owner_value ? Number(contractData.consignation_owner_value) : undefined,
     });
 
     if (contract) {
@@ -564,7 +567,7 @@ export async function signPublicContract(params: {
   const contract = await contractService.getById(db, params.contract_id);
   if (!contract) throw new Error("Contrato não encontrado.");
 
-  const role = contract.modality === "compra" ? "vendedor" : "comprador";
+  const role = (contract.modality === "compra" || contract.modality === "consignado") ? "vendedor" : "comprador";
 
   const signature = await contractService.registerSignature(db, {
     ...params,
@@ -579,11 +582,12 @@ export async function signPublicContract(params: {
       details: { contract_id: params.contract_id, ip: params.ip_address },
     });
 
+    const isConsigned = contract.modality === "consignado";
     await logTimelineEvent(params.contract_id, {
       event_type: "CONTRATO_ASSINADO",
-      description: `Contrato assinado digitalmente pelo ${role === "vendedor" ? "VENDEDOR (CLIENTE)" : "COMPRADOR"} no link público.`,
+      description: `Contrato assinado digitalmente pelo ${isConsigned ? "CONSIGNANTE" : (role === "vendedor" ? "VENDEDOR (CLIENTE)" : "COMPRADOR")} no link público.`,
       user_id: null,
-      user_name: role === "vendedor" ? "Vendedor (Link Público)" : "Comprador (Link Público)",
+      user_name: isConsigned ? "Consignante (Link Público)" : (role === "vendedor" ? "Vendedor (Link Público)" : "Comprador (Link Público)"),
     });
   }
 

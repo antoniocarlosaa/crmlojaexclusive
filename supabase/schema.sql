@@ -80,7 +80,11 @@ CREATE TABLE vehicles (
     category TEXT NOT NULL CHECK (category IN ('carro', 'moto')),
     notes TEXT,
     photos TEXT[] DEFAULT '{}' NOT NULL,
+    photos_ready TEXT[] DEFAULT '{}' NOT NULL,
     status TEXT NOT NULL DEFAULT 'disponivel' CHECK (status IN ('disponivel', 'vendido', 'reservado')),
+    entry_modality TEXT NOT NULL DEFAULT 'compra',
+    consignation_period_days INTEGER,
+    consignation_owner_value NUMERIC(12, 2),
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
@@ -112,6 +116,9 @@ CREATE TABLE contracts (
         'TRANSFERÊNCIA_CONCLUÍDA'
     )),
     version INTEGER DEFAULT 1 NOT NULL,
+    modality TEXT NOT NULL DEFAULT 'vista',
+    consignation_period_days INTEGER,
+    consignation_owner_value NUMERIC(12, 2),
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     CONSTRAINT unique_contract_number_per_company UNIQUE (company_id, contract_number)

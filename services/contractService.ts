@@ -54,6 +54,22 @@ export const contractService = {
       return createdContract;
     }
 
+    // Caso especial de Consignação (o cliente deixa o veículo na loja)
+    if (contractData.modality === "consignado") {
+      const createdContract = await contractRepository.create(supabase, {
+        ...contractData,
+        status: "AGUARDANDO_INICIAR",
+      });
+      if (!createdContract) throw new Error("Falha ao cadastrar o contrato de consignação.");
+
+      // Garante que o status do veículo fica como "disponivel" no estoque
+      await vehicleRepository.update(supabase, contractData.vehicle_id, {
+        status: "disponivel",
+      });
+
+      return createdContract;
+    }
+
     // 1. Verificar se veículo está disponível
     const vehicle = await vehicleRepository.getById(supabase, contractData.vehicle_id);
     if (!vehicle) throw new Error("Veículo não encontrado.");

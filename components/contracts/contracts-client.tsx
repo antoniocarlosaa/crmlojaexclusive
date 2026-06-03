@@ -180,6 +180,9 @@ export function getModalityLabel(contract: Contract) {
   if (contract.modality === "compra") {
     return "Só Compra";
   }
+  if (contract.modality === "consignado") {
+    return "Consignação";
+  }
   if (contract.modality === "financiada") {
     const text = contract.negotiation_agreement || "";
     const match = text.match(/Banco\s+([^.,\n]+)/i);
@@ -302,6 +305,8 @@ export function ContractsClient({ initialContracts, userRole }: ContractsClientP
         : "bg-blue-500/10 text-blue-400 border-blue-500/20";
     } else if (contract.modality === "compra") {
       colorClass = "bg-pink-500/10 text-pink-400 border-pink-500/20";
+    } else if (contract.modality === "consignado") {
+      colorClass = "bg-teal-500/10 text-teal-400 border-teal-500/20";
     }
     
     return (
@@ -423,11 +428,13 @@ export function ContractsClient({ initialContracts, userRole }: ContractsClientP
                       <div className="space-y-1 font-mono">
                         <div>
                           <span className="text-[10px] text-muted-foreground block uppercase font-sans tracking-wide">
-                            {contract.modality === "compra" ? "Compra" : "Venda"}
+                            {contract.modality === "compra" ? "Compra" : contract.modality === "consignado" ? "Consignação" : "Venda"}
                           </span>
                           <span className="text-foreground">
                             {contract.modality === "compra"
                               ? (contract.purchase_date ? formatDate(contract.purchase_date) : formatDate(contract.created_at))
+                              : contract.modality === "consignado"
+                              ? formatDate(contract.created_at)
                               : (contract.sale_date ? formatDate(contract.sale_date) : formatDate(contract.created_at))}
                           </span>
                         </div>

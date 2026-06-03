@@ -83,6 +83,7 @@ import {
   CheckCircle,
   Settings,
   Sparkles,
+  ClipboardList,
 } from "lucide-react";
 import { formatPlate } from "@/utils/validators";
 import { formatCurrency, formatMileage } from "@/utils/formatters";
@@ -207,6 +208,12 @@ const vehicleSchema = z.object({
   // Estoque
   entry_date: z.string().optional().or(z.literal("")).default(new Date().toISOString().split("T")[0]),
   sale_date: z.string().optional().or(z.literal("")),
+
+  // Consignado e Fotos Prontas
+  photos_ready: z.array(z.string()).default([]),
+  entry_modality: z.enum(["compra", "consignado"]).default("compra"),
+  consignation_period_days: z.preprocess((val) => parseNumberField(val), z.number()).optional().default(60),
+  consignation_owner_value: z.preprocess((val) => parseNumberField(val), z.number()).optional().default(0),
 });
 
 type VehicleFormValues = z.infer<typeof vehicleSchema>;
@@ -252,6 +259,8 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   // Custom image url input state
   const [newImageUrl, setNewImageUrl] = useState("");
   const [formPhotos, setFormPhotos] = useState<string[]>([]);
+  const [newImageUrlReady, setNewImageUrlReady] = useState("");
+  const [formPhotosReady, setFormPhotosReady] = useState<string[]>([]);
 
   // Local sale price input in Custos tab
   const [localSalePrice, setLocalSalePrice] = useState<string>("");
@@ -378,6 +387,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
       entry_date: new Date().toISOString().split("T")[0],
       sale_date: "",
+      photos_ready: [],
+      entry_modality: "compra",
+      consignation_period_days: 60,
+      consignation_owner_value: 0,
     },
   });
 
@@ -408,9 +421,18 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const watchTransferFee = watch("transfer_fee");
   const watchCancellationFee = watch("cancellation_fee");
 
+  // Consignado watches
+  const watchEntryModality = watch("entry_modality");
+  const watchConsignationPeriodDays = watch("consignation_period_days");
+  const watchConsignationOwnerValue = watch("consignation_owner_value");
+  const watchVehicleValue = watch("value");
+
   // Explicit number conversion using the localization-aware parser
   const numAppraisal = parseNumberField(watchAppraisalValue);
   const numPurchase = parseNumberField(watchPurchaseValue);
+  const numVehicleValue = parseNumberField(watchVehicleValue);
+  const numConsignationOwner = parseNumberField(watchConsignationOwnerValue);
+  const estimatedConsignationCommission = Math.max(0, numVehicleValue - numConsignationOwner);
   const numFines = watchHasFines ? parseNumberField(watchFinesValue) : 0;
   const numIpva = watchHasIpva ? parseNumberField(watchIpvaValue) : 0;
   const numFinancing = watchHasFinancing ? parseNumberField(watchFinancingPayout) : 0;
@@ -499,6 +521,37 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     setValue("photos", updatedPhotos);
   };
 
+  const handleAddImageUrlReady = () => {
+    if (newImageUrlReady.trim() && newImageUrlReady.startsWith("http")) {
+      const updatedPhotos = [...formPhotosReady, newImageUrlReady.trim()];
+      setFormPhotosReady(updatedPhotos);
+      setValue("photos_ready", updatedPhotos);
+      setNewImageUrlReady("");
+    }
+  };
+
+  const handleFileUploadReady = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        const updatedPhotos = [...formPhotosReady, base64String];
+        setFormPhotosReady(updatedPhotos);
+        setValue("photos_ready", updatedPhotos);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removePhotoReady = (index: number) => {
+    const updatedPhotos = formPhotosReady.filter((_, i) => i !== index);
+    setFormPhotosReady(updatedPhotos);
+    setValue("photos_ready", updatedPhotos);
+  };
+
   // Mutations
   const createMutation = useMutation({
     mutationFn: (vals: any) => createVehicle(vals),
@@ -508,6 +561,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       setIsFormOpen(false);
       reset();
       setFormPhotos([]);
+      setFormPhotosReady([]);
       alert("Veículo cadastrado com sucesso!");
     },
   });
@@ -521,6 +575,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       setSelectedVehicle(null);
       reset();
       setFormPhotos([]);
+      setFormPhotosReady([]);
       alert("Cadastro de veículo atualizado com sucesso!");
     },
   });
@@ -551,6 +606,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       category: values.category,
       notes: values.notes || "",
       photos: values.photos,
+      photos_ready: values.photos_ready || [],
+      entry_modality: values.entry_modality || "compra",
+      consignation_period_days: values.entry_modality === "consignado" ? (values.consignation_period_days || 0) : null,
+      consignation_owner_value: values.entry_modality === "consignado" ? (values.consignation_owner_value || 0) : null,
       status: values.status,
 
       owner_name: values.owner_name || "",
@@ -612,36 +671,70 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       const createdVehicle = await createMutation.mutateAsync(payload);
       if (createdVehicle && createdVehicle.id) {
         try {
-          await createContract({
-            client: {
-              name: values.owner_name || `Proprietário Anterior (${values.plate})`,
-              cpf: values.owner_cpf || "00000000000",
-              phone: values.owner_phone || "",
-            },
-            vehicle_id: createdVehicle.id,
-            modality: "compra",
-            total_value: parseNumberField(values.appraisal_value),
-            appraised_value: parseNumberField(values.appraisal_value),
-            net_value: calculatedNetClientValue,
-            purchase_date: values.entry_date || new Date().toISOString().split("T")[0],
-            status: "AGUARDANDO_INICIAR",
-            notes: "Contrato de compra gerado automaticamente no cadastro do veículo. O veículo será transferido para o novo cliente comprador assim que a revenda for realizada.",
-            custom_clauses: [
-              "Fica expressamente acordado que a transferência de propriedade do veículo ora adquirido pela LOJA para seu nome ou de terceiros ocorrerá exclusivamente no momento da revenda do bem para um novo cliente comprador final."
-            ],
-            former_owner_name: values.owner_name || "",
-            former_owner_cpf: values.owner_cpf || "",
-            former_owner_phone: values.owner_phone || "",
-            fines_debt: parseNumberField(values.fines_value) + parseNumberField(values.ipva_value),
-            bank_payout: parseNumberField(values.financing_payout),
-            broker_name: values.has_broker ? values.broker_name : "",
-            broker_phone: values.has_broker ? values.broker_phone : "",
-            has_dut: values.items_delivered?.dut || false,
-            has_spare_key: values.items_delivered?.spare_key || false,
-            has_manual: values.items_delivered?.manual || false,
-          });
+          if (values.entry_modality === "consignado") {
+            await createContract({
+              client: {
+                name: values.owner_name || `Proprietário Anterior (${values.plate})`,
+                cpf: values.owner_cpf || "00000000000",
+                phone: values.owner_phone || "",
+              },
+              vehicle_id: createdVehicle.id,
+              modality: "consignado",
+              total_value: parseNumberField(values.value),
+              appraised_value: parseNumberField(values.value),
+              net_value: parseNumberField(values.consignation_owner_value),
+              purchase_date: values.entry_date || new Date().toISOString().split("T")[0],
+              status: "AGUARDANDO_INICIAR",
+              consignation_period_days: parseNumberField(values.consignation_period_days),
+              consignation_owner_value: parseNumberField(values.consignation_owner_value),
+              notes: `Contrato de consignação gerado automaticamente no cadastro do veículo. Prazo acordado: ${values.consignation_period_days} dias. Valor mínimo proprietário: R$ ${values.consignation_owner_value}.`,
+              custom_clauses: [
+                `Fica acordado o prazo de consignação de ${values.consignation_period_days} dias, onde a LOJA (Consignatária) envidará esforços para a venda do veículo pelo valor estimado de R$ ${values.value}.`,
+                `Fica garantido ao Consignante o valor líquido mínimo de R$ ${values.consignation_owner_value} livre de custos operacionais básicos acordados.`
+              ],
+              former_owner_name: values.owner_name || "",
+              former_owner_cpf: values.owner_cpf || "",
+              former_owner_phone: values.owner_phone || "",
+              fines_debt: parseNumberField(values.fines_value) + parseNumberField(values.ipva_value),
+              bank_payout: parseNumberField(values.financing_payout),
+              broker_name: values.has_broker ? values.broker_name : "",
+              broker_phone: values.has_broker ? values.broker_phone : "",
+              has_dut: values.items_delivered?.dut || false,
+              has_spare_key: values.items_delivered?.spare_key || false,
+              has_manual: values.items_delivered?.manual || false,
+            });
+          } else {
+            await createContract({
+              client: {
+                name: values.owner_name || `Proprietário Anterior (${values.plate})`,
+                cpf: values.owner_cpf || "00000000000",
+                phone: values.owner_phone || "",
+              },
+              vehicle_id: createdVehicle.id,
+              modality: "compra",
+              total_value: parseNumberField(values.appraisal_value),
+              appraised_value: parseNumberField(values.appraisal_value),
+              net_value: calculatedNetClientValue,
+              purchase_date: values.entry_date || new Date().toISOString().split("T")[0],
+              status: "AGUARDANDO_INICIAR",
+              notes: "Contrato de compra gerado automaticamente no cadastro do veículo. O veículo será transferido para o novo cliente comprador assim que a revenda for realizada.",
+              custom_clauses: [
+                "Fica expressamente acordado que a transferência de propriedade do veículo ora adquirido pela LOJA para seu nome ou de terceiros ocorrerá exclusivamente no momento da revenda do bem para um novo cliente comprador final."
+              ],
+              former_owner_name: values.owner_name || "",
+              former_owner_cpf: values.owner_cpf || "",
+              former_owner_phone: values.owner_phone || "",
+              fines_debt: parseNumberField(values.fines_value) + parseNumberField(values.ipva_value),
+              bank_payout: parseNumberField(values.financing_payout),
+              broker_name: values.has_broker ? values.broker_name : "",
+              broker_phone: values.has_broker ? values.broker_phone : "",
+              has_dut: values.items_delivered?.dut || false,
+              has_spare_key: values.items_delivered?.spare_key || false,
+              has_manual: values.items_delivered?.manual || false,
+            });
+          }
         } catch (contractErr) {
-          console.error("Erro ao emitir contrato de compra automático:", contractErr);
+          console.error("Erro ao emitir contrato automático:", contractErr);
         }
       }
     }
@@ -654,6 +747,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       if (fullVehicle) {
         setSelectedVehicle(fullVehicle);
         setFormPhotos(fullVehicle.photos || []);
+        setFormPhotosReady(fullVehicle.photos_ready || []);
         reset({
           brand: fullVehicle.brand,
           model: fullVehicle.model,
@@ -721,6 +815,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
           entry_date: fullVehicle.stock_metrics?.entry_date || new Date().toISOString().split("T")[0],
           sale_date: fullVehicle.stock_metrics?.sale_date || "",
+          photos_ready: fullVehicle.photos_ready || [],
+          entry_modality: fullVehicle.entry_modality || "compra",
+          consignation_period_days: fullVehicle.consignation_period_days || 60,
+          consignation_owner_value: fullVehicle.consignation_owner_value || 0,
         });
         setActiveFormTab("form-basicos");
         setIsFormOpen(true);
@@ -751,6 +849,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const handleAddNew = () => {
     setSelectedVehicle(null);
     setFormPhotos([]);
+    setFormPhotosReady([]);
     reset({
       brand: "",
       model: "",
@@ -812,6 +911,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
       entry_date: new Date().toISOString().split("T")[0],
       sale_date: "",
+      photos_ready: [],
+      entry_modality: "compra",
+      consignation_period_days: 60,
+      consignation_owner_value: 0,
     });
     setActiveFormTab("form-basicos");
     setIsFormOpen(true);
@@ -1214,7 +1317,16 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                     className="glass-card overflow-hidden border-white/5 group hover:border-primary/20 transition-all duration-300 flex flex-col justify-between"
                   >
                     <div className="relative aspect-video w-full bg-secondary/30 overflow-hidden flex items-center justify-center">
-                      {vehicle.photos && vehicle.photos.length > 0 ? (
+                      {(vehicle.photos_ready && vehicle.photos_ready.length > 0) ? (
+                        <img
+                          src={vehicle.photos_ready[0]}
+                          alt={`${vehicle.brand} ${vehicle.model}`}
+                          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1542282088-fe8426682b8f?w=600&auto=format&fit=crop&q=60";
+                          }}
+                        />
+                      ) : vehicle.photos && vehicle.photos.length > 0 ? (
                         <img
                           src={vehicle.photos[0]}
                           alt={`${vehicle.brand} ${vehicle.model}`}
@@ -1367,7 +1479,9 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                           <TableCell className="font-medium text-foreground">
                             <div className="flex items-center gap-2">
                               <div className="h-8 w-8 rounded overflow-hidden bg-secondary/30 hidden sm:block">
-                                {vehicle.photos && vehicle.photos.length > 0 ? (
+                                {(vehicle.photos_ready && vehicle.photos_ready.length > 0) ? (
+                                  <img src={vehicle.photos_ready[0]} alt="" className="object-cover w-full h-full" />
+                                ) : vehicle.photos && vehicle.photos.length > 0 ? (
                                   <img src={vehicle.photos[0]} alt="" className="object-cover w-full h-full" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-muted-foreground"><ImageIcon size={12} /></div>
@@ -2261,39 +2375,78 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                 </div>
 
                 {/* Photo section */}
-                <div className="border-t border-border/30 pt-4">
-                  <h4 className="text-xs font-bold text-foreground mb-1 flex items-center gap-2 uppercase tracking-wider">
-                    <ImageIcon size={14} className="text-primary" /> Fotos do Veículo
-                  </h4>
-                  <p className="text-[10px] text-amber-500 font-semibold mb-3 leading-relaxed max-w-2xl bg-amber-500/5 border border-amber-500/10 p-2 rounded">
-                    ⚠️ OBS: Tire fotos do veículo no estado que se encontra. Registre em fotos avarias, peças e detalhes da avaliação para deixar registrado.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                    <div className="border border-dashed border-border/60 rounded-lg p-4 flex flex-col items-center justify-center bg-black/10 hover:bg-black/30 transition-all relative">
-                      <Upload size={20} className="text-muted-foreground mb-2" />
-                      <span className="text-[10px] text-muted-foreground font-semibold">Carregar Imagens Locais</span>
-                      <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                    </div>
+                <div className="border-t border-border/30 pt-4 space-y-6">
+                  {/* Gallery 1: Entrada / Vistoria */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
+                      <ClipboardList size={14} className="text-muted-foreground" /> Fotos de Entrada (Vistoria de Estoque)
+                    </h4>
+                    <p className="text-[10px] text-amber-500 font-semibold leading-relaxed max-w-2xl bg-amber-500/5 border border-amber-500/10 p-2 rounded">
+                      ⚠️ OBS: Registre o estado atual do veículo na entrada física do estoque (detalhes, avarias, vistoria geral).
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                      <div className="border border-dashed border-border/60 rounded-lg p-4 flex flex-col items-center justify-center bg-black/10 hover:bg-black/30 transition-all relative">
+                        <Upload size={20} className="text-muted-foreground mb-2" />
+                        <span className="text-[10px] text-muted-foreground font-semibold">Carregar Imagens de Entrada</span>
+                        <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </div>
 
-                    <div className="flex flex-col justify-center space-y-2">
-                      <Label htmlFor="img-url" className="text-[10px]">Cole URL direta da imagem</Label>
-                      <div className="flex gap-2">
-                        <Input id="img-url" placeholder="https://exemplo.com/foto.jpg" value={newImageUrl} onChange={(e) => setNewImageUrl(e.target.value)} className="bg-black/30 flex-1 text-xs h-8" />
-                        <Button type="button" variant="outline" size="sm" onClick={handleAddImageUrl} className="h-8 text-xs px-3">Adicionar</Button>
+                      <div className="flex flex-col justify-center space-y-2">
+                        <Label htmlFor="img-url-entrada" className="text-[10px]">Cole URL direta da imagem</Label>
+                        <div className="flex gap-2">
+                          <Input id="img-url-entrada" placeholder="https://exemplo.com/foto-vistoria.jpg" value={newImageUrl} onChange={(e) => setNewImageUrl(e.target.value)} className="bg-black/30 flex-1 text-xs h-8" />
+                          <Button type="button" variant="outline" size="sm" onClick={handleAddImageUrl} className="h-8 text-xs px-3">Adicionar</Button>
+                        </div>
                       </div>
                     </div>
+
+                    {formPhotos.length > 0 && (
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 bg-secondary/5 border border-border/40 p-3 rounded-lg">
+                        {formPhotos.map((photoUrl, idx) => (
+                          <div key={idx} className="relative aspect-video w-full rounded overflow-hidden border border-border/40 group/photo">
+                            <img src={photoUrl} alt="" className="object-cover w-full h-full" />
+                            <button type="button" onClick={() => removePhoto(idx)} className="absolute top-1 right-1 bg-red-600/90 text-white rounded-full p-0.5 hover:bg-red-700 transition-colors opacity-0 group-hover/photo:opacity-100"><X size={8} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {formPhotos.length > 0 && (
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 bg-secondary/10 border border-border/40 p-3 rounded-lg">
-                      {formPhotos.map((photoUrl, idx) => (
-                        <div key={idx} className="relative aspect-video w-full rounded overflow-hidden border border-border/40 group/photo">
-                          <img src={photoUrl} alt="" className="object-cover w-full h-full" />
-                          <button type="button" onClick={() => removePhoto(idx)} className="absolute top-1 right-1 bg-red-600/90 text-white rounded-full p-0.5 hover:bg-red-700 transition-colors opacity-0 group-hover/photo:opacity-100"><X size={8} /></button>
+                  {/* Gallery 2: Catálogo / Pronto para venda */}
+                  <div className="space-y-3 pt-4 border-t border-border/25">
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
+                      <Sparkles size={14} className="text-emerald-400" /> Fotos do Catálogo (Pronto para Venda / Publicação)
+                    </h4>
+                    <p className="text-[10px] text-emerald-400 font-semibold leading-relaxed max-w-2xl bg-emerald-500/5 border border-emerald-500/10 p-2 rounded">
+                      ✨ IMPORTANTE: Estas são as fotos que serão enviadas para o catálogo online e anúncios. Carregue fotos tratadas, limpas e profissionais do veículo.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                      <div className="border border-dashed border-border/60 rounded-lg p-4 flex flex-col items-center justify-center bg-black/10 hover:bg-black/30 transition-all relative">
+                        <Upload size={20} className="text-emerald-400/80 mb-2" />
+                        <span className="text-[10px] text-muted-foreground font-semibold">Carregar Imagens do Catálogo</span>
+                        <input type="file" multiple accept="image/*" onChange={handleFileUploadReady} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </div>
+
+                      <div className="flex flex-col justify-center space-y-2">
+                        <Label htmlFor="img-url-catalogo" className="text-[10px]">Cole URL direta da imagem de catálogo</Label>
+                        <div className="flex gap-2">
+                          <Input id="img-url-catalogo" placeholder="https://exemplo.com/foto-pronto.jpg" value={newImageUrlReady} onChange={(e) => setNewImageUrlReady(e.target.value)} className="bg-black/30 flex-1 text-xs h-8" />
+                          <Button type="button" variant="outline" size="sm" onClick={handleAddImageUrlReady} className="h-8 text-xs px-3">Adicionar</Button>
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  )}
+
+                    {formPhotosReady.length > 0 && (
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 bg-secondary/5 border border-border/40 p-3 rounded-lg">
+                        {formPhotosReady.map((photoUrl, idx) => (
+                          <div key={idx} className="relative aspect-video w-full rounded overflow-hidden border border-emerald-500/20 group/photo-ready">
+                            <img src={photoUrl} alt="" className="object-cover w-full h-full" />
+                            <button type="button" onClick={() => removePhotoReady(idx)} className="absolute top-1 right-1 bg-red-600/90 text-white rounded-full p-0.5 hover:bg-red-700 transition-colors opacity-0 group-hover/photo-ready:opacity-100"><X size={8} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </TabsContent>
 
@@ -2367,296 +2520,408 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   {/* Nota Fiscal Header */}
                   <div className="flex justify-between items-center border-b border-dashed border-zinc-800 pb-4">
                     <div className="flex items-center gap-2.5">
-                      <div className="bg-emerald-500/10 text-emerald-400 p-2 rounded-lg border border-emerald-500/20">
-                        <FileCheck size={18} />
+                      <div className={`p-2 rounded-lg border transition-all ${
+                        watchEntryModality === "consignado"
+                          ? "bg-teal-500/10 text-teal-400 border-teal-500/20"
+                          : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      }`}>
+                        {watchEntryModality === "consignado" ? <ClipboardList size={18} /> : <FileCheck size={18} />}
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Ficha de Avaliação e Descontos Financeiros</h3>
-                        <p className="text-[9px] text-muted-foreground uppercase">Registro de Operação de Compra e Detalhamento de Custo</p>
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                          {watchEntryModality === "consignado"
+                            ? "Ficha de Consignação e Intermediação"
+                            : "Ficha de Avaliação e Descontos Financeiros"}
+                        </h3>
+                        <p className="text-[9px] text-muted-foreground uppercase">
+                          {watchEntryModality === "consignado"
+                            ? "Registro de Consignação e Prazo Contratual"
+                            : "Registro de Operação de Compra e Detalhamento de Custo"}
+                        </p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className="text-[9px] font-mono text-muted-foreground px-2.5 py-1 border border-zinc-850 rounded bg-zinc-900/60 uppercase font-semibold">
-                        Entrada Estoque
+                      <span className={`text-[9px] font-mono px-2.5 py-1 border rounded bg-zinc-900/60 uppercase font-semibold transition-all ${
+                        watchEntryModality === "consignado"
+                          ? "text-teal-400 border-teal-850"
+                          : "text-muted-foreground border-zinc-850"
+                      }`}>
+                        {watchEntryModality === "consignado" ? "Consignação" : "Entrada Estoque"}
                       </span>
                     </div>
                   </div>
 
-                  {/* Seção 1: Valores de Aquisição */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                      <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
-                      {watchZeroKm ? "1. Valor de Compra (Base)" : "1. Valor de Avaliação (Base)"}
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 bg-zinc-900/20 border border-zinc-900 p-4 rounded-lg">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="appraisal_value" className="text-xs text-muted-foreground font-semibold">
-                          {watchZeroKm ? "Valor de Compra (R$) *" : "Valor de Avaliação (R$) *"}
-                        </Label>
-                        <Input id="appraisal_value" type="text" placeholder="0,00" {...register("appraisal_value")} className="bg-black/40 text-emerald-400 font-bold border-emerald-500/20 focus:border-emerald-500 h-9" />
-                        <p className="text-[9px] text-muted-foreground">
-                          {watchZeroKm 
-                            ? "Preço bruto de aquisição do veículo pela concessionária." 
-                            : "Toda a operação de compra, contratos e taxas é calculada com base neste valor de avaliação."}
-                        </p>
-                      </div>
+                  {/* Modality Picker */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold text-muted-foreground uppercase">Modalidade de Entrada</Label>
+                    <div className="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => setValue("entry_modality", "compra")}
+                        className={`py-2 text-xs font-bold uppercase rounded-md transition-all ${
+                          watchEntryModality !== "consignado"
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Compra Direta
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setValue("entry_modality", "consignado")}
+                        className={`py-2 text-xs font-bold uppercase rounded-md transition-all ${
+                          watchEntryModality === "consignado"
+                            ? "bg-teal-500/10 text-teal-400 border border-teal-500/30"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Consignação
+                      </button>
                     </div>
                   </div>
 
-                  {!watchZeroKm && (
+                  {watchEntryModality !== "consignado" ? (
                     <>
-                      {/* Seção 2: Débitos e Regularizações */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                      <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
-                      2. Débitos e Deduções (A Descontar do Cliente)
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* Fines */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[11px] font-bold uppercase text-muted-foreground">Multas?</Label>
-                          <Select
-                            value={watchHasFines ? "sim" : "nao"}
-                            onValueChange={(val) => setValue("has_fines", val === "sim")}
-                          >
-                            <SelectTrigger className="w-[70px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
-                              <SelectItem value="sim">Sim</SelectItem>
-                              <SelectItem value="nao">Não</SelectItem>
-                            </SelectContent>
-                          </Select>
+                      {/* Seção 1: Valores de Aquisição */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                          <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
+                          {watchZeroKm ? "1. Valor de Compra (Base)" : "1. Valor de Avaliação (Base)"}
                         </div>
-                        {watchHasFines && (
-                          <div className="space-y-1.5 animate-fadeIn">
-                            <Label htmlFor="fines_value" className="text-[9px] text-muted-foreground">Valor das Multas (R$)</Label>
-                            <Input id="fines_value" type="text" placeholder="0,00" {...register("fines_value")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                          </div>
-                        )}
-                      </Card>
-
-                      {/* IPVA */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[11px] font-bold uppercase text-muted-foreground">IPVA?</Label>
-                          <Select
-                            value={watchHasIpva ? "sim" : "nao"}
-                            onValueChange={(val) => setValue("has_ipva", val === "sim")}
-                          >
-                            <SelectTrigger className="w-[70px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
-                              <SelectItem value="sim">Sim</SelectItem>
-                              <SelectItem value="nao">Não</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {watchHasIpva && (
-                          <div className="space-y-1.5 animate-fadeIn">
-                            <Label htmlFor="ipva_value" className="text-[9px] text-muted-foreground">Valor IPVA (R$)</Label>
-                            <Input id="ipva_value" type="text" placeholder="0,00" {...register("ipva_value")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                          </div>
-                        )}
-                      </Card>
-
-                      {/* Quitação */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[11px] font-bold uppercase text-muted-foreground">Quitação?</Label>
-                          <Select
-                            value={watchHasFinancing ? "sim" : "nao"}
-                            onValueChange={(val) => setValue("has_financing", val === "sim")}
-                          >
-                            <SelectTrigger className="w-[70px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
-                              <SelectItem value="sim">Sim</SelectItem>
-                              <SelectItem value="nao">Não</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {watchHasFinancing && (
-                          <div className="space-y-2 animate-fadeIn">
-                            <div className="space-y-1">
-                              <Label className="text-[8px] text-muted-foreground">Tipo</Label>
-                              <Select
-                                value={watchFinancingType || "financiamento"}
-                                onValueChange={(val) => setValue("financing_type", val as any)}
-                              >
-                                <SelectTrigger className="h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
-                                  <SelectValue placeholder="Selecione" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
-                                  <SelectItem value="financiamento">Financiamento</SelectItem>
-                                  <SelectItem value="consorcio">Consórcio</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-[8px] text-muted-foreground">Banco</Label>
-                              <Select
-                                value={watchFinancingBank || ""}
-                                onValueChange={(val) => setValue("financing_bank", val)}
-                              >
-                                <SelectTrigger className="h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
-                                  <SelectValue placeholder="Banco" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
-                                  <SelectItem value="HONDA">HONDA</SelectItem>
-                                  <SelectItem value="BV">BV</SelectItem>
-                                  <SelectItem value="BRADESCO">BRADESCO</SelectItem>
-                                  <SelectItem value="PAN">PAN</SelectItem>
-                                  <SelectItem value="SANTANDER">SANTANDER</SelectItem>
-                                  <SelectItem value="YAMAHA">YAMAHA</SelectItem>
-                                  <SelectItem value="SUZUKI">SUZUKI</SelectItem>
-                                  <SelectItem value="OMNI">OMNI</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <Label htmlFor="financing_payout" className="text-[8px] text-muted-foreground">Saldo Quitação (R$)</Label>
-                              <Input id="financing_payout" type="text" placeholder="0,00" {...register("financing_payout")} className="bg-black/40 h-6 text-xs border-zinc-800" />
-                            </div>
-                          </div>
-                        )}
-                      </Card>
-
-                      {/* Custos Cartório */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
-                        <div className="flex flex-col space-y-1">
-                          <Label className="text-[11px] font-bold uppercase text-muted-foreground">Cartório</Label>
-                          <Select
-                            value={watchNotaryPaymentType || "cliente_paga_fora"}
-                            onValueChange={(val) => setValue("notary_payment_type", val as any)}
-                          >
-                            <SelectTrigger className="h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
-                              <SelectItem value="cliente_paga_fora">Cliente paga por fora</SelectItem>
-                              <SelectItem value="loja_assume">Loja assume</SelectItem>
-                              <SelectItem value="descontar_avaliacao">Descontar da avaliação</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {(watchNotaryPaymentType === "loja_assume" || watchNotaryPaymentType === "descontar_avaliacao") && (
-                          <div className="space-y-1.5 animate-fadeIn">
-                            <Label htmlFor="notary_costs" className="text-[9px] text-muted-foreground">Valor Taxa (R$)</Label>
-                            <Input id="notary_costs" type="text" placeholder="0,00" {...register("notary_costs")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                          </div>
-                        )}
-                      </Card>
-                    </div>
-                  </div>
-
-                  {/* Seção 3: Corretor e Procuração */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                      <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
-                      3. Custos Operacionais (Corretagem & Procuração)
-                    </div>
-                    <Card className="bg-black/35 border-zinc-900 p-4 space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Corretagem */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
-                            <Label className="text-xs font-bold text-muted-foreground uppercase">Intermediação de Corretor?</Label>
-                            <Select
-                              value={watchHasBroker ? "sim" : "nao"}
-                              onValueChange={(val) => setValue("has_broker", val === "sim")}
-                            >
-                              <SelectTrigger className="w-[75px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
-                                <SelectValue placeholder="Selecione" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
-                                <SelectItem value="sim">Sim</SelectItem>
-                                <SelectItem value="nao">Não</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {watchHasBroker && (
-                            <div className="grid grid-cols-2 gap-2.5 animate-fadeIn">
-                              <div className="space-y-1">
-                                <Label htmlFor="broker_name" className="text-[9px] text-muted-foreground">Nome Corretor</Label>
-                                <Input id="broker_name" {...register("broker_name")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label htmlFor="broker_phone" className="text-[9px] text-muted-foreground">Telefone</Label>
-                                <Input id="broker_phone" {...register("broker_phone")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                              </div>
-                              <div className="space-y-1 col-span-2">
-                                <Label htmlFor="broker_commission" className="text-[9px] text-muted-foreground font-semibold">Comissão Corretor (R$)</Label>
-                                <Input id="broker_commission" type="text" placeholder="0,00" {...register("broker_commission")} className="bg-black/40 h-7 text-xs text-primary font-semibold border-zinc-800" />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Procuração */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
-                            <Label className="text-xs font-bold text-muted-foreground uppercase">Procuração do Cartório</Label>
-                          </div>
+                        <div className="grid grid-cols-1 gap-4 bg-zinc-900/20 border border-zinc-900 p-4 rounded-lg">
                           <div className="space-y-1.5">
-                            <Label htmlFor="power_value" className="text-[9px] text-muted-foreground font-semibold">Valor Procuração (R$)</Label>
-                            <Input id="power_value" type="text" placeholder="0,00" {...register("power_value")} className="bg-black/40 h-7 text-xs text-primary border-zinc-800" />
-                            <p className="text-[9px] text-muted-foreground">Valor cobrado pela procuração que será descontado do cliente.</p>
+                            <Label htmlFor="appraisal_value" className="text-xs text-muted-foreground font-semibold">
+                              {watchZeroKm ? "Valor de Compra (R$) *" : "Valor de Avaliação (R$) *"}
+                            </Label>
+                            <Input id="appraisal_value" type="text" placeholder="0,00" {...register("appraisal_value")} className="bg-black/40 text-emerald-400 font-bold border-emerald-500/20 focus:border-emerald-500 h-9" />
+                            <p className="text-[9px] text-muted-foreground">
+                              {watchZeroKm 
+                                ? "Preço bruto de aquisição do veículo pela concessionária." 
+                                : "Toda a operação de compra, contratos e taxas é calculada com base neste valor de avaliação."}
+                            </p>
                           </div>
                         </div>
                       </div>
-                    </Card>
-                  </div>
 
-                  {/* Seção 4: Outras Taxas e Serviços Operacionais */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                      <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
-                      4. Taxas e Serviços Operacionais (A Descontar do Cliente)
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                      {/* Despachante */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
-                        <Label htmlFor="dispatch_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Serviço Despachante (R$)</Label>
-                        <Input id="dispatch_fee" type="text" placeholder="0,00" {...register("dispatch_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                      </Card>
+                      {!watchZeroKm && (
+                        <>
+                          {/* Seção 2: Débitos e Regularizações */}
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                              <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
+                              2. Débitos e Deduções (A Descontar do Cliente)
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                              {/* Fines */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[11px] font-bold uppercase text-muted-foreground">Multas?</Label>
+                                  <Select
+                                    value={watchHasFines ? "sim" : "nao"}
+                                    onValueChange={(val) => setValue("has_fines", val === "sim")}
+                                  >
+                                    <SelectTrigger className="w-[70px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                      <SelectValue placeholder="Selecione" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
+                                      <SelectItem value="sim">Sim</SelectItem>
+                                      <SelectItem value="nao">Não</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {watchHasFines && (
+                                  <div className="space-y-1.5 animate-fadeIn">
+                                    <Label htmlFor="fines_value" className="text-[9px] text-muted-foreground">Valor das Multas (R$)</Label>
+                                    <Input id="fines_value" type="text" placeholder="0,00" {...register("fines_value")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                                  </div>
+                                )}
+                              </Card>
 
-                      {/* Intenção de Venda */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
-                        <Label htmlFor="sale_intention_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Intenção de Venda (R$)</Label>
-                        <Input id="sale_intention_fee" type="text" placeholder="0,00" {...register("sale_intention_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                      </Card>
+                              {/* IPVA */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[11px] font-bold uppercase text-muted-foreground">IPVA?</Label>
+                                  <Select
+                                    value={watchHasIpva ? "sim" : "nao"}
+                                    onValueChange={(val) => setValue("has_ipva", val === "sim")}
+                                  >
+                                    <SelectTrigger className="w-[70px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                      <SelectValue placeholder="Selecione" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
+                                      <SelectItem value="sim">Sim</SelectItem>
+                                      <SelectItem value="nao">Não</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {watchHasIpva && (
+                                  <div className="space-y-1.5 animate-fadeIn">
+                                    <Label htmlFor="ipva_value" className="text-[9px] text-muted-foreground">Valor IPVA (R$)</Label>
+                                    <Input id="ipva_value" type="text" placeholder="0,00" {...register("ipva_value")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                                  </div>
+                                )}
+                              </Card>
 
-                      {/* Emplacamento */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
-                        <Label htmlFor="registration_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Emplacamento (R$)</Label>
-                        <Input id="registration_fee" type="text" placeholder="0,00" {...register("registration_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                      </Card>
+                              {/* Quitação */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[11px] font-bold uppercase text-muted-foreground">Quitação?</Label>
+                                  <Select
+                                    value={watchHasFinancing ? "sim" : "nao"}
+                                    onValueChange={(val) => setValue("has_financing", val === "sim")}
+                                  >
+                                    <SelectTrigger className="w-[70px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                      <SelectValue placeholder="Selecione" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
+                                      <SelectItem value="sim">Sim</SelectItem>
+                                      <SelectItem value="nao">Não</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {watchHasFinancing && (
+                                  <div className="space-y-2 animate-fadeIn">
+                                    <div className="space-y-1">
+                                      <Label className="text-[8px] text-muted-foreground">Tipo</Label>
+                                      <Select
+                                        value={watchFinancingType || "financiamento"}
+                                        onValueChange={(val) => setValue("financing_type", val as any)}
+                                      >
+                                        <SelectTrigger className="h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                          <SelectValue placeholder="Selecione" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
+                                          <SelectItem value="financiamento">Financiamento</SelectItem>
+                                          <SelectItem value="consorcio">Consórcio</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-[8px] text-muted-foreground">Banco</Label>
+                                      <Select
+                                        value={watchFinancingBank || ""}
+                                        onValueChange={(val) => setValue("financing_bank", val)}
+                                      >
+                                        <SelectTrigger className="h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                          <SelectValue placeholder="Banco" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
+                                          <SelectItem value="HONDA">HONDA</SelectItem>
+                                          <SelectItem value="BV">BV</SelectItem>
+                                          <SelectItem value="BRADESCO">BRADESCO</SelectItem>
+                                          <SelectItem value="PAN">PAN</SelectItem>
+                                          <SelectItem value="SANTANDER">SANTANDER</SelectItem>
+                                          <SelectItem value="YAMAHA">YAMAHA</SelectItem>
+                                          <SelectItem value="SUZUKI">SUZUKI</SelectItem>
+                                          <SelectItem value="OMNI">OMNI</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label htmlFor="financing_payout" className="text-[8px] text-muted-foreground">Saldo Quitação (R$)</Label>
+                                      <Input id="financing_payout" type="text" placeholder="0,00" {...register("financing_payout")} className="bg-black/40 h-6 text-xs border-zinc-800" />
+                                    </div>
+                                  </div>
+                                )}
+                              </Card>
 
-                      {/* Transferência */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
-                        <Label htmlFor="transfer_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Transferência (R$)</Label>
-                        <Input id="transfer_fee" type="text" placeholder="0,00" {...register("transfer_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                      </Card>
+                              {/* Custos Cartório */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
+                                <div className="flex flex-col space-y-1">
+                                  <Label className="text-[11px] font-bold uppercase text-muted-foreground">Cartório</Label>
+                                  <Select
+                                    value={watchNotaryPaymentType || "cliente_paga_fora"}
+                                    onValueChange={(val) => setValue("notary_payment_type", val as any)}
+                                  >
+                                    <SelectTrigger className="h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                      <SelectValue placeholder="Selecione" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
+                                      <SelectItem value="cliente_paga_fora">Cliente paga por fora</SelectItem>
+                                      <SelectItem value="loja_assume">Loja assume</SelectItem>
+                                      <SelectItem value="descontar_avaliacao">Descontar da avaliação</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {(watchNotaryPaymentType === "loja_assume" || watchNotaryPaymentType === "descontar_avaliacao") && (
+                                  <div className="space-y-1.5 animate-fadeIn">
+                                    <Label htmlFor="notary_costs" className="text-[9px] text-muted-foreground">Valor Taxa (R$)</Label>
+                                    <Input id="notary_costs" type="text" placeholder="0,00" {...register("notary_costs")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                                  </div>
+                                )}
+                              </Card>
+                            </div>
+                          </div>
 
-                      {/* Taxa de Cancelamento */}
-                      <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
-                        <Label htmlFor="cancellation_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Taxa Cancelamento (R$)</Label>
-                        <Input id="cancellation_fee" type="text" placeholder="0,00" {...register("cancellation_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
-                      </Card>
-                    </div>
-                  </div>
+                          {/* Seção 3: Corretor e Procuração */}
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                              <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
+                              3. Custos Operacionais (Corretagem & Procuração)
+                            </div>
+                            <Card className="bg-black/35 border-zinc-900 p-4 space-y-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Corretagem */}
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Intermediação de Corretor?</Label>
+                                    <Select
+                                      value={watchHasBroker ? "sim" : "nao"}
+                                      onValueChange={(val) => setValue("has_broker", val === "sim")}
+                                    >
+                                      <SelectTrigger className="w-[75px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                        <SelectValue placeholder="Selecione" />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
+                                        <SelectItem value="sim">Sim</SelectItem>
+                                        <SelectItem value="nao">Não</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  {watchHasBroker && (
+                                    <div className="grid grid-cols-2 gap-2.5 animate-fadeIn">
+                                      <div className="space-y-1">
+                                        <Label htmlFor="broker_name" className="text-[9px] text-muted-foreground">Nome Corretor</Label>
+                                        <Input id="broker_name" {...register("broker_name")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                                      </div>
+                                      <div className="space-y-1">
+                                        <Label htmlFor="broker_phone" className="text-[9px] text-muted-foreground">Telefone</Label>
+                                        <Input id="broker_phone" {...register("broker_phone")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                                      </div>
+                                      <div className="space-y-1 col-span-2">
+                                        <Label htmlFor="broker_commission" className="text-[9px] text-muted-foreground font-semibold">Comissão Corretor (R$)</Label>
+                                        <Input id="broker_commission" type="text" placeholder="0,00" {...register("broker_commission")} className="bg-black/40 h-7 text-xs text-primary font-semibold border-zinc-800" />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Procuração */}
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Procuração do Cartório</Label>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label htmlFor="power_value" className="text-[9px] text-muted-foreground font-semibold">Valor Procuração (R$)</Label>
+                                    <Input id="power_value" type="text" placeholder="0,00" {...register("power_value")} className="bg-black/40 h-7 text-xs text-primary border-zinc-800" />
+                                    <p className="text-[9px] text-muted-foreground">Valor cobrado pela procuração que será descontado do cliente.</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </Card>
+                          </div>
+
+                          {/* Seção 4: Outras Taxas e Serviços Operacionais */}
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                              <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
+                              4. Taxas e Serviços Operacionais (A Descontar do Cliente)
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                              {/* Despachante */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
+                                <Label htmlFor="dispatch_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Serviço Despachante (R$)</Label>
+                                <Input id="dispatch_fee" type="text" placeholder="0,00" {...register("dispatch_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                              </Card>
+
+                              {/* Intenção de Venda */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
+                                <Label htmlFor="sale_intention_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Intenção de Venda (R$)</Label>
+                                <Input id="sale_intention_fee" type="text" placeholder="0,00" {...register("sale_intention_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                              </Card>
+
+                              {/* Emplacamento */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
+                                <Label htmlFor="registration_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Emplacamento (R$)</Label>
+                                <Input id="registration_fee" type="text" placeholder="0,00" {...register("registration_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                              </Card>
+
+                              {/* Transferência */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
+                                <Label htmlFor="transfer_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Transferência (R$)</Label>
+                                <Input id="transfer_fee" type="text" placeholder="0,00" {...register("transfer_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                              </Card>
+
+                              {/* Taxa de Cancelamento */}
+                              <Card className="bg-black/35 border-zinc-900 p-4 space-y-1.5">
+                                <Label htmlFor="cancellation_fee" className="text-[10px] font-bold uppercase text-muted-foreground">Taxa Cancelamento (R$)</Label>
+                                <Input id="cancellation_fee" type="text" placeholder="0,00" {...register("cancellation_fee")} className="bg-black/40 h-7 text-xs border-zinc-800" />
+                              </Card>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Seção 1: Dados da Consignação */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-bold text-teal-400 uppercase tracking-wider">
+                          <span className="w-1 h-3 bg-teal-400 rounded-sm"></span>
+                          1. Dados da Consignação
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-zinc-900/20 border border-zinc-900 p-4 rounded-lg">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="value" className="text-xs text-muted-foreground font-semibold">
+                              Valor Estimado de Venda (R$) *
+                            </Label>
+                            <Input
+                              id="value"
+                              type="text"
+                              placeholder="0,00"
+                              {...register("value")}
+                              className="bg-black/40 text-teal-400 font-bold border-teal-500/20 focus:border-teal-500 h-9"
+                            />
+                            <p className="text-[9px] text-muted-foreground">
+                              Preço estimado de comercialização final no catálogo.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label htmlFor="consignation_owner_value" className="text-xs text-muted-foreground font-semibold">
+                              Valor Líquido Proprietário (R$) *
+                            </Label>
+                            <Input
+                              id="consignation_owner_value"
+                              type="text"
+                              placeholder="0,00"
+                              {...register("consignation_owner_value")}
+                              className="bg-black/40 text-teal-400 font-bold border-teal-500/20 focus:border-teal-500 h-9"
+                            />
+                            <p className="text-[9px] text-muted-foreground">
+                              Valor líquido garantido a ser repassado ao proprietário após a venda.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label htmlFor="consignation_period_days" className="text-xs text-muted-foreground font-semibold">
+                              Prazo de Consignação (Dias) *
+                            </Label>
+                            <Input
+                              id="consignation_period_days"
+                              type="text"
+                              placeholder="60"
+                              {...register("consignation_period_days")}
+                              className="bg-black/40 text-teal-400 font-bold border-teal-500/20 focus:border-teal-500 h-9"
+                            />
+                            <p className="text-[9px] text-muted-foreground">
+                              Tempo de vigência acordado para manter o veículo consignado (ex: 60 dias).
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </>
                   )}
 
                   {/* Seção 5: Estado do Veículo (Consolidado) */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                      <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
-                      5. Estado de Conservação e Preparação
+                    <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${
+                      watchEntryModality === "consignado" ? "text-teal-400" : "text-emerald-400"
+                    }`}>
+                      <span className={`w-1 h-3 rounded-sm ${
+                        watchEntryModality === "consignado" ? "bg-teal-400" : "bg-emerald-400"
+                      }`}></span>
+                      {watchEntryModality === "consignado" ? "2. Estado de Conservação e Preparação" : "5. Estado de Conservação e Preparação"}
                     </div>
                     <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2693,9 +2958,13 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
                   {/* Seção 6: Datas */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                      <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
-                      6. Data de Entrada no Estoque
+                    <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${
+                      watchEntryModality === "consignado" ? "text-teal-400" : "text-emerald-400"
+                    }`}>
+                      <span className={`w-1 h-3 rounded-sm ${
+                        watchEntryModality === "consignado" ? "bg-teal-400" : "bg-emerald-400"
+                      }`}></span>
+                      {watchEntryModality === "consignado" ? "3. Data de Entrada no Estoque" : "6. Data de Entrada no Estoque"}
                     </div>
                     <Card className="bg-black/35 border-zinc-900 p-4">
                       <div className="space-y-1.5">
@@ -2707,114 +2976,154 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   </div>
 
                   {/* Seção 7: Preço de Venda Definido */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
-                      <span className="w-1 h-3 bg-primary rounded-sm"></span>
-                      7. Preço de Venda Final (Definir Após Avaliar Custos)
-                    </div>
-                    <Card className="bg-black/35 border-primary/20 p-4">
-                      <div className="space-y-1.5 max-w-sm">
-                        <Label htmlFor="value" className="text-xs font-bold text-primary">Preço de Venda Sugerido / Estimado (R$)</Label>
-                        <Input id="value" type="text" placeholder="0,00" {...register("value")} className="bg-black/40 text-primary font-bold border-primary/20 focus:border-primary h-9" />
-                        <p className="text-[9px] text-muted-foreground">Preço de comercialização definido para este veículo.</p>
+                  {watchEntryModality !== "consignado" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
+                        <span className="w-1 h-3 bg-primary rounded-sm"></span>
+                        7. Preço de Venda Final (Definir Após Avaliar Custos)
                       </div>
-                    </Card>
-                  </div>
+                      <Card className="bg-black/35 border-primary/20 p-4">
+                        <div className="space-y-1.5 max-w-sm">
+                          <Label htmlFor="value" className="text-xs font-bold text-primary">Preço de Venda Sugerido / Estimado (R$)</Label>
+                          <Input id="value" type="text" placeholder="0,00" {...register("value")} className="bg-black/40 text-primary font-bold border-primary/20 focus:border-primary h-9" />
+                          <p className="text-[9px] text-muted-foreground">Preço de comercialização definido para este veículo.</p>
+                        </div>
+                      </Card>
+                    </div>
+                  )}
 
                   {/* Seção 8: Totais Financeiros (Visual Nota Fiscal) */}
                   <div className="mt-8 pt-6 border-t border-dashed border-zinc-800">
                     <div className="text-center mb-4">
-                      <span className="text-[10px] font-mono text-muted-foreground uppercase bg-zinc-900/80 px-4 py-1.5 border border-zinc-800 rounded-full font-semibold">
-                        Cálculo de Payout / Resumo Financeiro da Entrada
+                      <span className={`text-[10px] font-mono uppercase bg-zinc-900/80 px-4 py-1.5 border rounded-full font-semibold transition-all ${
+                        watchEntryModality === "consignado"
+                          ? "text-teal-400 border-teal-500/20"
+                          : "text-muted-foreground border-zinc-800"
+                      }`}>
+                        {watchEntryModality === "consignado"
+                          ? "Cálculo de Comissão / Resumo Financeiro da Consignação"
+                          : "Cálculo de Payout / Resumo Financeiro da Entrada"}
                       </span>
                     </div>
                     
-                    <div className="border border-zinc-900 rounded-xl overflow-hidden bg-black/60 shadow-lg font-mono text-xs max-w-2xl mx-auto">
-                      <div className="p-5 space-y-3">
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase pb-1.5 border-b border-zinc-900">
-                          Demonstrativo de Payout (Líquido Cliente)
-                        </div>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-muted-foreground">
-                            {watchZeroKm ? "Valor de Compra:" : "Valor de Avaliação:"}
-                          </span>
-                          <span className="font-bold text-foreground">{formatCurrency(numAppraisal)}</span>
-                        </div>
-                        {!watchZeroKm && (
-                          <>
-                            <div className="flex justify-between items-center text-[11px]">
-                              <span className="text-muted-foreground">(-) Multas e Débitos IPVA:</span>
-                              <span className="text-red-400">-{formatCurrency(numFines + numIpva)}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-[11px]">
-                              <span className="text-muted-foreground">(-) Quitação Bancária:</span>
-                              <span className="text-red-400">-{formatCurrency(numFinancing)}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-[11px]">
-                              <span className="text-muted-foreground">(-) Comissão Corretor:</span>
-                              <span className="text-red-400">-{formatCurrency(numBroker)}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-[11px]">
-                              <span className="text-muted-foreground">(-) Cartório (Dedução):</span>
-                              <span className="text-red-400">-{formatCurrency(numNotaryDiscount)}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-[11px]">
-                              <span className="text-muted-foreground">(-) Custo Procuração:</span>
-                              <span className="text-red-400">-{formatCurrency(numPower)}</span>
-                            </div>
-                          </>
-                        )}
-                        {(numDispatch > 0 || numSaleIntention > 0 || numRegistration > 0 || numTransfer > 0 || numCancellation > 0) && (
-                          <div className="pt-2 border-t border-zinc-900/60 space-y-1.5">
-                            <div className="text-[9px] font-bold text-muted-foreground uppercase">Outras Deduções de Taxas</div>
-                            {numDispatch > 0 && (
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-muted-foreground">Serviço de Despachante:</span>
-                                <span className="text-red-400">-{formatCurrency(numDispatch)}</span>
-                              </div>
-                            )}
-                            {numSaleIntention > 0 && (
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-muted-foreground">Intenção de Venda:</span>
-                                <span className="text-red-400">-{formatCurrency(numSaleIntention)}</span>
-                              </div>
-                            )}
-                            {numRegistration > 0 && (
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-muted-foreground">Emplacamento:</span>
-                                <span className="text-red-400">-{formatCurrency(numRegistration)}</span>
-                              </div>
-                            )}
-                            {numTransfer > 0 && (
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-muted-foreground">Transferência:</span>
-                                <span className="text-red-400">-{formatCurrency(numTransfer)}</span>
-                              </div>
-                            )}
-                            {numCancellation > 0 && (
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-muted-foreground">Taxa de Cancelamento:</span>
-                                <span className="text-red-400">-{formatCurrency(numCancellation)}</span>
-                              </div>
-                            )}
+                    {watchEntryModality !== "consignado" ? (
+                      <div className="border border-zinc-900 rounded-xl overflow-hidden bg-black/60 shadow-lg font-mono text-xs max-w-2xl mx-auto">
+                        <div className="p-5 space-y-3">
+                          <div className="text-[10px] font-bold text-muted-foreground uppercase pb-1.5 border-b border-zinc-900">
+                            Demonstrativo de Payout (Líquido Cliente)
                           </div>
-                        )}
-                        <div className="flex justify-between items-center pt-2.5 border-t border-zinc-900 text-sm">
-                          <span className="text-emerald-400 font-extrabold">(=) VALOR A PAGAR CLIENTE:</span>
-                          <span className="text-base font-black text-emerald-400">{formatCurrency(calculatedNetClientValue)}</span>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-muted-foreground">
+                              {watchZeroKm ? "Valor de Compra:" : "Valor de Avaliação:"}
+                            </span>
+                            <span className="font-bold text-foreground">{formatCurrency(numAppraisal)}</span>
+                          </div>
+                          {!watchZeroKm && (
+                            <>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-muted-foreground">(-) Multas e Débitos IPVA:</span>
+                                <span className="text-red-400">-{formatCurrency(numFines + numIpva)}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-muted-foreground">(-) Quitação Bancária:</span>
+                                <span className="text-red-400">-{formatCurrency(numFinancing)}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-muted-foreground">(-) Comissão Corretor:</span>
+                                <span className="text-red-400">-{formatCurrency(numBroker)}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-muted-foreground">(-) Cartório (Dedução):</span>
+                                <span className="text-red-400">-{formatCurrency(numNotaryDiscount)}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-muted-foreground">(-) Custo Procuração:</span>
+                                <span className="text-red-400">-{formatCurrency(numPower)}</span>
+                              </div>
+                            </>
+                          )}
+                          {(numDispatch > 0 || numSaleIntention > 0 || numRegistration > 0 || numTransfer > 0 || numCancellation > 0) && (
+                            <div className="pt-2 border-t border-zinc-900/60 space-y-1.5">
+                              <div className="text-[9px] font-bold text-muted-foreground uppercase">Outras Deduções de Taxas</div>
+                              {numDispatch > 0 && (
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-muted-foreground">Serviço de Despachante:</span>
+                                  <span className="text-red-400">-{formatCurrency(numDispatch)}</span>
+                                </div>
+                              )}
+                              {numSaleIntention > 0 && (
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-muted-foreground">Intenção de Venda:</span>
+                                  <span className="text-red-400">-{formatCurrency(numSaleIntention)}</span>
+                                </div>
+                              )}
+                              {numRegistration > 0 && (
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-muted-foreground">Emplacamento:</span>
+                                  <span className="text-red-400">-{formatCurrency(numRegistration)}</span>
+                                </div>
+                              )}
+                              {numTransfer > 0 && (
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-muted-foreground">Transferência:</span>
+                                  <span className="text-red-400">-{formatCurrency(numTransfer)}</span>
+                                </div>
+                              )}
+                              {numCancellation > 0 && (
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-muted-foreground">Taxa de Cancelamento:</span>
+                                  <span className="text-red-400">-{formatCurrency(numCancellation)}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center pt-2.5 border-t border-zinc-900 text-sm">
+                            <span className="text-emerald-400 font-extrabold">(=) VALOR A PAGAR CLIENTE:</span>
+                            <span className="text-base font-black text-emerald-400">{formatCurrency(calculatedNetClientValue)}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Barcode Decoration */}
+                        <div className="bg-zinc-950 p-4 text-center border-t border-zinc-900 flex flex-col items-center justify-center gap-1.5">
+                          <div className="h-6 flex items-center justify-center tracking-[0.3em] font-sans font-normal text-zinc-800 text-[10px] select-none">
+                            ||||| | || ||||| | |||| ||| | ||||| || ||| || ||| |||| |
+                          </div>
+                          <span className="text-[7.5px] text-zinc-600 uppercase font-mono tracking-wider">
+                            DOCUMENTO AUXILIAR DE ENTRADA (ERP REI DAS MOTOS)
+                          </span>
                         </div>
                       </div>
-                      
-                      {/* Barcode Decoration */}
-                      <div className="bg-zinc-950 p-4 text-center border-t border-zinc-900 flex flex-col items-center justify-center gap-1.5">
-                        <div className="h-6 flex items-center justify-center tracking-[0.3em] font-sans font-normal text-zinc-800 text-[10px] select-none">
-                          ||||| | || ||||| | |||| ||| | ||||| || ||| || ||| |||| |
+                    ) : (
+                      <div className="border border-teal-500/20 rounded-xl overflow-hidden bg-black/60 shadow-lg font-mono text-xs max-w-2xl mx-auto transition-all animate-fadeIn">
+                        <div className="p-5 space-y-3">
+                          <div className="text-[10px] font-bold text-teal-400 uppercase pb-1.5 border-b border-zinc-900">
+                            Demonstrativo de Consignação (Estimativa de Intermediação)
+                          </div>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-muted-foreground">Valor Estimado de Venda:</span>
+                            <span className="font-bold text-foreground">{formatCurrency(numVehicleValue)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-muted-foreground">(-) Valor Líquido Proprietário:</span>
+                            <span className="font-bold text-foreground">{formatCurrency(numConsignationOwner)}</span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2.5 border-t border-zinc-900 text-sm">
+                            <span className="text-teal-400 font-extrabold">(=) ESTIMATIVA COMISSÃO (SOBREPREÇO):</span>
+                            <span className="text-base font-black text-teal-400">{formatCurrency(estimatedConsignationCommission)}</span>
+                          </div>
                         </div>
-                        <span className="text-[7.5px] text-zinc-600 uppercase font-mono tracking-wider">
-                          DOCUMENTO AUXILIAR DE ENTRADA (ERP REI DAS MOTOS)
-                        </span>
+                        
+                        {/* Barcode Decoration */}
+                        <div className="bg-zinc-950 p-4 text-center border-t border-zinc-900 flex flex-col items-center justify-center gap-1.5">
+                          <div className="h-6 flex items-center justify-center tracking-[0.3em] font-sans font-normal text-teal-950 text-[10px] select-none font-semibold">
+                            ||||| | || ||||| | |||| ||| | ||||| || ||| || ||| |||| |
+                          </div>
+                          <span className="text-[7.5px] text-teal-600/70 uppercase font-mono tracking-wider">
+                            CONTRATO DE CONSIGNAÇÃO (ERP REI DAS MOTOS)
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </TabsContent>
@@ -2906,32 +3215,74 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
           {selectedVehicle && (
             <div className="space-y-6 mt-2">
-              {/* Photo gallery */}
-              {selectedVehicle.photos && selectedVehicle.photos.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="aspect-video w-full rounded-lg overflow-hidden border border-border/40 bg-black/40">
-                    <img
-                      src={selectedVehicle.photos[0]}
-                      alt={`${selectedVehicle.brand} ${selectedVehicle.model}`}
-                      className="object-contain w-full h-full"
-                    />
-                  </div>
-                  {selectedVehicle.photos.length > 1 && (
-                    <div className="grid grid-cols-6 gap-2">
-                      {selectedVehicle.photos.slice(1).map((photoUrl: string, idx: number) => (
-                        <div key={idx} className="aspect-video rounded overflow-hidden border border-border/30">
-                          <img src={photoUrl} alt="" className="object-cover w-full h-full" />
+              {/* Photo galleries tabs */}
+              <Tabs defaultValue="galeria-catalogo" className="w-full">
+                <TabsList className="bg-black/30 border border-border/40 p-0.5 rounded-lg mb-3 flex gap-0.5 w-full justify-start">
+                  <TabsTrigger value="galeria-catalogo" className="text-xs py-1.5 px-3 flex items-center gap-1.5 font-bold">
+                    <Sparkles size={14} className="text-emerald-400" /> Fotos do Catálogo (Pronto para Venda)
+                  </TabsTrigger>
+                  <TabsTrigger value="galeria-entrada" className="text-xs py-1.5 px-3 flex items-center gap-1.5 font-bold">
+                    <ClipboardList size={14} className="text-muted-foreground" /> Fotos de Entrada (Vistoria)
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="galeria-catalogo" className="space-y-2 mt-0">
+                  {selectedVehicle.photos_ready && selectedVehicle.photos_ready.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="aspect-video w-full rounded-lg overflow-hidden border border-border/40 bg-black/40">
+                        <img
+                          src={selectedVehicle.photos_ready[0]}
+                          alt="Catálogo"
+                          className="object-contain w-full h-full"
+                        />
+                      </div>
+                      {selectedVehicle.photos_ready.length > 1 && (
+                        <div className="grid grid-cols-6 gap-2">
+                          {selectedVehicle.photos_ready.slice(1).map((photoUrl: string, idx: number) => (
+                            <div key={idx} className="aspect-video rounded overflow-hidden border border-border/30">
+                              <img src={photoUrl} alt="" className="object-cover w-full h-full" />
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+                    </div>
+                  ) : (
+                    <div className="aspect-video w-full rounded-lg bg-secondary/15 flex flex-col items-center justify-center text-muted-foreground/60 border border-border/30 p-4">
+                      <ImageIcon size={36} className="mb-2 text-muted-foreground/40" />
+                      <span className="text-xs font-semibold">Sem fotos prontas no catálogo</span>
+                      <span className="text-[10px] text-muted-foreground/50 mt-1">Edite o veículo para enviar as fotos prontas para publicação online</span>
                     </div>
                   )}
-                </div>
-              ) : (
-                <div className="aspect-video w-full rounded-lg bg-secondary/15 flex flex-col items-center justify-center text-muted-foreground/60 border border-border/30">
-                  <ImageIcon size={36} className="mb-2" />
-                  <span>Sem Fotos Cadastradas</span>
-                </div>
-              )}
+                </TabsContent>
+
+                <TabsContent value="galeria-entrada" className="space-y-2 mt-0">
+                  {selectedVehicle.photos && selectedVehicle.photos.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="aspect-video w-full rounded-lg overflow-hidden border border-border/40 bg-black/40">
+                        <img
+                          src={selectedVehicle.photos[0]}
+                          alt="Vistoria Entrada"
+                          className="object-contain w-full h-full"
+                        />
+                      </div>
+                      {selectedVehicle.photos.length > 1 && (
+                        <div className="grid grid-cols-6 gap-2">
+                          {selectedVehicle.photos.slice(1).map((photoUrl: string, idx: number) => (
+                            <div key={idx} className="aspect-video rounded overflow-hidden border border-border/30">
+                              <img src={photoUrl} alt="" className="object-cover w-full h-full" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="aspect-video w-full rounded-lg bg-secondary/15 flex flex-col items-center justify-center text-muted-foreground/60 border border-border/30 p-4">
+                      <ImageIcon size={36} className="mb-2" />
+                      <span className="text-xs">Sem fotos de vistoria</span>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
 
               {/* Technical Details */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-4 gap-x-6 border-t border-b border-border/30 py-4 text-xs">
@@ -3040,6 +3391,43 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                 const selectedVehicleSalePrice = Number(selectedVehicle.value || 0);
                 const selectedVehicleProfit = selectedVehicleSalePrice - selectedVehicleTotalCost;
                 const selectedVehicleMargin = selectedVehicleSalePrice > 0 ? (selectedVehicleProfit / selectedVehicleSalePrice) * 100 : 0;
+
+                if (selectedVehicle.entry_modality === "consignado") {
+                  const salePrice = Number(selectedVehicle.value || 0);
+                  const ownerValue = Number(selectedVehicle.consignation_owner_value || 0);
+                  const estimatedCommission = Math.max(0, salePrice - ownerValue);
+                  const periodDays = selectedVehicle.consignation_period_days || 60;
+                  const selectedVehicleExpensesTotal = selectedVehicle.costs ? selectedVehicle.costs.reduce((sum: number, c: any) => sum + Number(c.value), 0) : 0;
+                  const totalCost = ownerValue + selectedVehicleExpensesTotal;
+                  
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs bg-teal-950/20 p-4 rounded-lg border border-teal-500/20">
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-teal-400 uppercase pb-1 border-b border-teal-500/10 flex items-center gap-1.5">
+                          <Coins size={14} /> Modalidade Consignação
+                        </h4>
+                        <p><span className="text-muted-foreground">Valor Estimado de Venda:</span> <strong className="text-foreground">{formatCurrency(salePrice)}</strong></p>
+                        <p><span className="text-muted-foreground">Valor Garantido ao Proprietário:</span> <strong className="text-foreground">{formatCurrency(ownerValue)}</strong></p>
+                        <p><span className="text-muted-foreground">Prazo de Consignação:</span> <strong className="text-foreground">{periodDays} dias</strong></p>
+                        
+                        <div className="pt-1.5 border-t border-teal-500/10">
+                          <p className="text-teal-400 font-bold"><span className="text-muted-foreground">Comissão Estimada da Loja:</span> {formatCurrency(estimatedCommission)}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-foreground uppercase pb-1 border-b border-border/10">Custos Internos & Manutenção</h4>
+                        <p><span className="text-muted-foreground font-semibold">Custos e Despesas (Manutenção):</span> <strong className="text-red-400">{formatCurrency(selectedVehicleExpensesTotal)}</strong></p>
+                        <p className="text-muted-foreground/80 text-[10px]">A comissão estimada é calculada subtraindo o valor garantido do proprietário do valor de venda sugerido. Despesas de manutenção no estoque reduzem o lucro líquido real da comissão.</p>
+                        
+                        <div className="pt-2 border-t border-border/10 space-y-1">
+                          <p className="text-cyan-400 font-bold"><span className="text-muted-foreground">Custo Total Consignado + Prep:</span> {formatCurrency(totalCost)}</p>
+                          <p className="text-emerald-400 font-bold"><span className="text-muted-foreground">Lucro Líquido Estimado da Loja:</span> {formatCurrency(Math.max(0, estimatedCommission - selectedVehicleExpensesTotal))}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
 
                 return (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs bg-secondary/10 p-4 rounded-lg border border-border/30">

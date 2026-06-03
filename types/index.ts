@@ -60,6 +60,7 @@ export interface Vehicle {
   category: VehicleCategory;
   notes?: string;
   photos: string[];
+  photos_ready?: string[];
   status: VehicleStatus;
   created_at: string;
   updated_at: string;
@@ -91,6 +92,9 @@ export interface Vehicle {
   notary_costs?: number;
   notary_payment_type?: "cliente_paga_fora" | "loja_assume" | "descontar_avaliacao";
   notary_discount_value?: number;
+  entry_modality?: "compra" | "consignado";
+  consignation_period_days?: number;
+  consignation_owner_value?: number;
 }
 
 export interface VehicleCost {
@@ -195,7 +199,7 @@ export interface Contract {
   created_at: string;
   updated_at: string;
   // Novos campos para melhorias
-  modality: "vista" | "financiada" | "compra_venda" | "repasse" | "compra";
+  modality: "vista" | "financiada" | "compra_venda" | "repasse" | "compra" | "consignado";
   former_owner_name?: string;
   former_owner_cpf?: string;
   delivery_km?: number;
@@ -204,6 +208,8 @@ export interface Contract {
   payment_method?: "pix" | "especie" | "cartao_parcelado" | "cartao_debit" | "multiplo";
   has_remaining_balance?: boolean;
   negotiation_agreement?: string;
+  consignation_period_days?: number;
+  consignation_owner_value?: number;
   // Campos de rastreamento de datas da operação
   sale_date?: string;
   down_payment_date?: string;

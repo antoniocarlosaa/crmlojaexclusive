@@ -469,6 +469,8 @@ export function ContractDetailClient({
         : "bg-blue-500/10 text-blue-400 border-blue-500/20";
     } else if (contract.modality === "compra") {
       colorClass = "bg-pink-500/10 text-pink-400 border-pink-500/20";
+    } else if (contract.modality === "consignado") {
+      colorClass = "bg-teal-500/10 text-teal-400 border-teal-500/20";
     }
     
     return (
@@ -568,7 +570,7 @@ export function ContractDetailClient({
                 <Card className="glass-card border-white/5">
                   <CardHeader className="pb-3 border-b border-border/40">
                     <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                      <User size={16} /> {contract.modality === "compra" ? "Vendedor (Cliente)" : "Comprador"}
+                      <User size={16} /> {contract.modality === "compra" ? "Vendedor (Cliente)" : contract.modality === "consignado" ? "Consignante (Cliente)" : "Comprador (Cliente)"}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-4 text-xs space-y-2 leading-relaxed text-muted-foreground">
@@ -590,7 +592,7 @@ export function ContractDetailClient({
                 <Card className="glass-card border-white/5">
                   <CardHeader className="pb-3 border-b border-border/40">
                     <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                      <Car size={16} /> {contract.modality === "compra" ? "Veículo Adquirido" : "Veículo Vendido"}
+                      <Car size={16} /> {contract.modality === "compra" ? "Veículo Adquirido" : contract.modality === "consignado" ? "Veículo em Consignação" : "Veículo Vendido"}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-4 text-xs space-y-2 leading-relaxed text-muted-foreground">
@@ -604,7 +606,7 @@ export function ContractDetailClient({
                     <p>Renavam: <span className="font-mono text-foreground">{contract.vehicle?.renavam}</span></p>
                     <p>Chassi: <span className="font-mono text-foreground">{contract.vehicle?.chassis}</span></p>
                     <p className="border-t border-border/20 pt-2 mt-2 font-bold text-foreground">
-                      Valor Negociado: {formatCurrency(contract.total_value)}
+                      {contract.modality === "consignado" ? "Valor Estimado de Venda" : "Valor Negociado"}: {formatCurrency(contract.total_value)}
                     </p>
                   </CardContent>
                 </Card>
@@ -618,24 +620,47 @@ export function ContractDetailClient({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4 text-xs">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-border/30">
-                    <div>
-                      <span className="text-muted-foreground block mb-0.5">Valor Total da Venda</span>
-                      <span className="text-base font-extrabold text-foreground">{formatCurrency(contract.total_value)}</span>
+                  {contract.modality === "consignado" ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-border/30">
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Valor Estimado de Venda</span>
+                        <span className="text-base font-extrabold text-foreground">{formatCurrency(contract.total_value)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Valor Líquido Consignante</span>
+                        <span className="text-base font-extrabold text-emerald-400">{formatCurrency(contract.consignation_owner_value || 0)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Comissão Estimada (Excedente)</span>
+                        <span className="text-base font-bold text-foreground">
+                          {formatCurrency(Math.max(0, contract.total_value - (contract.consignation_owner_value || 0)))}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Prazo de Vigência</span>
+                        <span className="text-base font-bold text-foreground">{contract.consignation_period_days || 0} dias</span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground block mb-0.5">Sinal / Entrada</span>
-                      <span className="text-base font-extrabold text-emerald-400">{formatCurrency(contract.down_payment)}</span>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-border/30">
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">{contract.modality === "compra" ? "Valor da Compra" : "Valor Total da Venda"}</span>
+                        <span className="text-base font-extrabold text-foreground">{formatCurrency(contract.total_value)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Sinal / Entrada</span>
+                        <span className="text-base font-extrabold text-emerald-400">{formatCurrency(contract.down_payment)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Parcelas Amortizadas</span>
+                        <span className="text-base font-bold text-foreground">{contract.installments_count}x</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Taxa de Juros</span>
+                        <span className="text-base font-bold text-foreground">{contract.interest_rate}% am</span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground block mb-0.5">Parcelas Amortizadas</span>
-                      <span className="text-base font-bold text-foreground">{contract.installments_count}x</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block mb-0.5">Taxa de Juros</span>
-                      <span className="text-base font-bold text-foreground">{contract.interest_rate}% am</span>
-                    </div>
-                  </div>
+                  )}
 
                   {contract.former_owner_name && (
                     <div className="py-3 border-b border-border/20">
@@ -699,71 +724,73 @@ export function ContractDetailClient({
               </Card>
 
               {/* Parcelas */}
-              <Card className="glass-card border-white/5">
-                <CardHeader className="pb-3 border-b border-border/40">
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <Calendar size={16} /> Cronograma Financeiro de Recebimento
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="hover:bg-transparent border-border/40">
-                        <TableHead className="font-semibold text-xs">Parcela</TableHead>
-                        <TableHead className="font-semibold text-xs">Vencimento</TableHead>
-                        <TableHead className="font-semibold text-xs">Valor</TableHead>
-                        <TableHead className="font-semibold text-xs">Pagamento</TableHead>
-                        <TableHead className="font-semibold text-xs">Método</TableHead>
-                        <TableHead className="font-semibold text-xs">Status</TableHead>
-                        <TableHead className="font-semibold text-xs text-right">Ação</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {payments.map((p) => (
-                        <TableRow key={p.id} className="border-border/40 hover:bg-secondary/10">
-                          <TableCell className="font-bold text-xs">
-                             {p.is_refund ? (
-                               <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold text-[10px]">VOLTA (TROCO)</Badge>
-                             ) : p.installment_number === 0 ? (
-                               <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold text-[10px]">SINAL</Badge>
-                             ) : (
-                               `Parcela #${p.installment_number}`
-                             )}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">{formatDate(p.due_date)}</TableCell>
-                          <TableCell className="font-semibold text-foreground">{formatCurrency(p.amount)}</TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">{p.paid_at ? formatDate(p.paid_at) : "-"}</TableCell>
-                          <TableCell className="capitalize text-muted-foreground text-xs">{p.payment_method ? p.payment_method.replace("_", " ") : "-"}</TableCell>
-                          <TableCell>
-                            {p.status === "PAGO" ? (
-                              <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px]">Pago</Badge>
-                            ) : p.status === "ATRASADO" ? (
-                              <Badge className="bg-destructive/15 text-destructive border border-destructive/30 text-[10px]">Atrasado</Badge>
-                            ) : (
-                              <Badge className="bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 text-[10px]">Pendente</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {p.status !== "PAGO" && (userProfile.role === "financeiro" || userProfile.role === "admin") && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-[10px] font-bold px-2 py-0 hover:bg-emerald-500/10 hover:text-emerald-400"
-                                onClick={() => {
-                                  setSelectedPayment(p);
-                                  setIsConfirmPaymentOpen(true);
-                                }}
-                              >
-                                Dar Baixa
-                              </Button>
-                            )}
-                          </TableCell>
+              {contract.modality !== "consignado" && (
+                <Card className="glass-card border-white/5">
+                  <CardHeader className="pb-3 border-b border-border/40">
+                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                      <Calendar size={16} /> Cronograma Financeiro de Recebimento
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent border-border/40">
+                          <TableHead className="font-semibold text-xs">Parcela</TableHead>
+                          <TableHead className="font-semibold text-xs">Vencimento</TableHead>
+                          <TableHead className="font-semibold text-xs">Valor</TableHead>
+                          <TableHead className="font-semibold text-xs">Pagamento</TableHead>
+                          <TableHead className="font-semibold text-xs">Método</TableHead>
+                          <TableHead className="font-semibold text-xs">Status</TableHead>
+                          <TableHead className="font-semibold text-xs text-right">Ação</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {payments.map((p) => (
+                          <TableRow key={p.id} className="border-border/40 hover:bg-secondary/10">
+                            <TableCell className="font-bold text-xs">
+                               {p.is_refund ? (
+                                 <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold text-[10px]">VOLTA (TROCO)</Badge>
+                               ) : p.installment_number === 0 ? (
+                                 <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold text-[10px]">SINAL</Badge>
+                               ) : (
+                                 `Parcela #${p.installment_number}`
+                               )}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">{formatDate(p.due_date)}</TableCell>
+                            <TableCell className="font-semibold text-foreground">{formatCurrency(p.amount)}</TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">{p.paid_at ? formatDate(p.paid_at) : "-"}</TableCell>
+                            <TableCell className="capitalize text-muted-foreground text-xs">{p.payment_method ? p.payment_method.replace("_", " ") : "-"}</TableCell>
+                            <TableCell>
+                              {p.status === "PAGO" ? (
+                                <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px]">Pago</Badge>
+                              ) : p.status === "ATRASADO" ? (
+                                <Badge className="bg-destructive/15 text-destructive border border-destructive/30 text-[10px]">Atrasado</Badge>
+                              ) : (
+                                <Badge className="bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 text-[10px]">Pendente</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {p.status !== "PAGO" && (userProfile.role === "financeiro" || userProfile.role === "admin") && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] font-bold px-2 py-0 hover:bg-emerald-500/10 hover:text-emerald-400"
+                                  onClick={() => {
+                                    setSelectedPayment(p);
+                                    setIsConfirmPaymentOpen(true);
+                                  }}
+                                >
+                                  Dar Baixa
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Sidebar Assinaturas */}
@@ -778,7 +805,7 @@ export function ContractDetailClient({
                   <div className="space-y-3">
                     <div className="flex items-center justify-between border-b border-border/20 pb-2">
                       <span className="font-bold text-foreground">
-                        {contract.modality === "compra" ? "Assinatura Comprador (Loja)" : "Assinatura Comprador (Cliente)"}
+                        {contract.modality === "compra" ? "Assinatura Comprador (Loja)" : contract.modality === "consignado" ? "Assinatura Consignante (Cliente)" : "Assinatura Comprador (Cliente)"}
                       </span>
                       {buyerSignature ? (
                         <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">Concluída</Badge>
@@ -802,6 +829,8 @@ export function ContractDetailClient({
                         <p className="text-[10px] leading-relaxed">
                           {contract.modality === "compra" 
                             ? "Aguardando colheita digital no link móvel do vendedor (cliente)."
+                            : contract.modality === "consignado"
+                            ? "Aguardando colheita digital no link móvel do consignante (cliente)."
                             : "Aguardando colheita digital no link móvel do comprador."}
                         </p>
                         <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={handleCopyLink}>Copiar Link</Button>
@@ -812,7 +841,7 @@ export function ContractDetailClient({
                   <div className="space-y-3 pt-4 border-t border-border/30">
                     <div className="flex items-center justify-between border-b border-border/20 pb-2">
                       <span className="font-bold text-foreground">
-                        {contract.modality === "compra" ? "Assinatura Vendedor (Cliente)" : "Assinatura Vendedor (Loja)"}
+                        {contract.modality === "compra" ? "Assinatura Vendedor (Cliente)" : contract.modality === "consignado" ? "Assinatura Consignatário (Loja)" : "Assinatura Vendedor (Loja)"}
                       </span>
                       {sellerSignature ? (
                         <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">Concluída</Badge>
@@ -833,7 +862,11 @@ export function ContractDetailClient({
                     ) : (
                       <div className="p-3 bg-secondary/10 border border-dashed border-border/40 rounded flex flex-col items-center justify-center text-center gap-2">
                         <Lock size={20} className="text-muted-foreground/60" />
-                        <p className="text-[10px] leading-relaxed">A assinatura digital do representante legal da concessionária deve ser inserida.</p>
+                        <p className="text-[10px] leading-relaxed">
+                          {contract.modality === "consignado"
+                            ? "A assinatura digital do representante legal da concessionária (consignatário) deve ser inserida."
+                            : "A assinatura digital do representante legal da concessionária deve ser inserida."}
+                        </p>
                         {(userProfile.role === "admin" || userProfile.role === "vendedor") && (
                           <Button size="sm" className="h-7 text-[10px]" onClick={() => {
                             setSigningRole("contract_seller");
@@ -856,10 +889,18 @@ export function ContractDetailClient({
                 <CardContent className="pt-4 space-y-4 text-xs">
                   {/* Data da Venda ou Compra */}
                   <div className="flex justify-between items-center py-1.5 border-b border-border/10">
-                    <span className="text-muted-foreground">{contract.modality === "compra" ? "Data da Compra" : "Data da Venda"}</span>
+                    <span className="text-muted-foreground">
+                      {contract.modality === "compra" 
+                        ? "Data da Compra" 
+                        : contract.modality === "consignado" 
+                        ? "Data da Consignação" 
+                        : "Data da Venda"}
+                    </span>
                     <span className="font-semibold text-foreground">
                       {contract.modality === "compra" 
                         ? (contract.purchase_date ? formatDate(contract.purchase_date) : "-")
+                        : contract.modality === "consignado"
+                        ? formatDate(contract.created_at)
                         : (contract.sale_date ? formatDate(contract.sale_date) : "-")}
                     </span>
                   </div>

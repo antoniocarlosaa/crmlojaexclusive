@@ -53,7 +53,7 @@ const contractSchema = z.object({
   notes: z.string().optional(),
   
   // Novos campos
-  modality: z.enum(["vista", "financiada", "compra_venda", "repasse", "compra"]),
+  modality: z.enum(["vista", "financiada", "compra_venda", "repasse", "compra", "consignado"]),
   former_owner_name: z.string().optional(),
   former_owner_cpf: z.string().optional(),
   delivery_km: z.coerce.number().min(0, "Quilometragem inválida"),
@@ -62,6 +62,8 @@ const contractSchema = z.object({
   payment_method: z.enum(["pix", "especie", "cartao_parcelado", "cartao_debit", "multiplo"]).optional(),
   has_remaining_balance: z.boolean().optional(),
   negotiation_agreement: z.string().optional(),
+  consignation_period_days: z.coerce.number().min(1, "O prazo deve ser maior que zero").optional().default(60),
+  consignation_owner_value: z.coerce.number().min(0, "O valor mínimo não pode ser negativo").optional().default(0),
 });
 
 type ContractFormValues = z.infer<typeof contractSchema>;
@@ -251,6 +253,8 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
       payment_method: "pix",
       has_remaining_balance: false,
       negotiation_agreement: "",
+      consignation_period_days: 60,
+      consignation_owner_value: 0,
     },
   });
 
@@ -258,6 +262,8 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
   const selectedClientId = watch("client_id");
   const selectedVehicleId = watch("vehicle_id");
   const totalValue = watch("total_value");
+  const consignationOwnerValue = watch("consignation_owner_value");
+  const estimatedConsignationCommission = Math.max((totalValue || 0) - (consignationOwnerValue || 0), 0);
   const downPayment = watch("down_payment");
   const installmentsCount = watch("installments_count");
   const interestRate = watch("interest_rate");
@@ -330,6 +336,10 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
       setValue("warranty_period_days", 0);
       setValue("warranty_type", "personalizada");
       setValue("warranty_text", "CONTRATO DE COMPRA: Operação de aquisição de veículo pela concessionária. Não aplicável termo de garantia convencional.");
+    } else if (modality === "consignado") {
+      setValue("warranty_period_days", 0);
+      setValue("warranty_type", "personalizada");
+      setValue("warranty_text", "CONTRATO DE CONSIGNAÇÃO: Veículo recebido em regime de consignação para intermediação de venda. Não se aplica garantia de venda neste instrumento.");
     } else {
       const isZeroKm = vehicleRegType === "existing" && selectedVehicle?.items_delivered?.zero_km;
       if (isZeroKm) {
@@ -458,6 +468,18 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
         payload.down_payment = 0;
         payload.interest_rate = 0;
         payload.installments_count = 1;
+      }
+
+      if (vals.modality === "consignado") {
+        payload.total_value = vals.total_value;
+        payload.consignation_period_days = vals.consignation_period_days;
+        payload.consignation_owner_value = vals.consignation_owner_value;
+        payload.down_payment = 0;
+        payload.interest_rate = 0;
+        payload.installments_count = 1;
+        
+        let agreement = `Contrato de Consignação. Valor Estimado de Venda: R$ ${formatCurrency(vals.total_value)}. Prazo de Consignação: ${vals.consignation_period_days} dias. Valor Líquido Garantido ao Proprietário: R$ ${formatCurrency(vals.consignation_owner_value)}. Comissão Estimada da Loja: R$ ${formatCurrency(Math.max(vals.total_value - vals.consignation_owner_value, 0))}.`;
+        payload.negotiation_agreement = agreement;
       }
 
       if (vals.modality === "financiada") {
@@ -590,7 +612,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
   const handleNextStep = () => {
     if (step === 1) {
       if (clientRegType === "existing" && !selectedClientId) {
-        alert(modality === "compra" ? "Selecione um cliente vendedor ou cadastre um novo." : "Selecione um cliente comprador ou cadastre um novo.");
+        alert((modality === "compra" || modality === "consignado") ? "Selecione um cliente vendedor/consignante ou cadastre um novo." : "Selecione um cliente comprador ou cadastre um novo.");
         return;
       }
       if (clientRegType === "new" && (!newClientData.name || !newClientData.cpf)) {
@@ -612,6 +634,19 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
       if (modality === "compra") {
         if (purchaseAppraisedVal <= 0) {
           alert("Insira o valor de compra do veículo.");
+          return;
+        }
+      } else if (modality === "consignado") {
+        if (totalValue <= 0) {
+          alert("Insira o valor estimado de venda.");
+          return;
+        }
+        if (consignationOwnerValue <= 0) {
+          alert("Insira o valor mínimo garantido ao proprietário.");
+          return;
+        }
+        if (consignationOwnerValue >= totalValue) {
+          alert("O valor mínimo do proprietário deve ser menor que o valor estimado de venda.");
           return;
         }
       } else {
@@ -656,15 +691,16 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
               {/* Modalidade Cards */}
               <div className="space-y-2">
                 <Label className="text-sm font-semibold">
-                  {modality === "compra" ? "1. Modalidade de Compra" : "1. Modalidade da Venda"}
+                  {(modality === "compra" || modality === "consignado") ? "1. Modalidade de Entrada" : "1. Modalidade da Venda"}
                 </Label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
                   {[
                     { id: "vista", label: "Venda à Vista", desc: "Pagamento imediato" },
                     { id: "financiada", label: "Financiada", desc: "Financiamento bancário" },
                     { id: "compra_venda", label: "Compra e Venda", desc: "Envolve veículo na troca" },
                     { id: "repasse", label: "Repasse", desc: "Venda sem garantia de pátio" },
                     { id: "compra", label: "Compra de Veículo", desc: "Loja adquirindo veículo" },
+                    { id: "consignado", label: "Consignação", desc: "Veículo consignado na loja" },
                   ].map((m) => (
                     <button
                       key={m.id}
@@ -687,7 +723,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
               <div className="space-y-4 border-t border-border/20 pt-4">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-semibold">
-                    {modality === "compra" ? "2. Vendedor (Cliente)" : "2. Comprador"}
+                    {(modality === "compra" || modality === "consignado") ? "2. Vendedor / Consignante (Cliente)" : "2. Comprador (Cliente)"}
                   </Label>
                   <div className="flex gap-2">
                     <Button
@@ -1192,6 +1228,72 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                   </div>
                 </div>
               </div>
+            ) : modality === "consignado" ? (
+              <div className="space-y-6">
+                <div className="flex flex-col space-y-1 border-b border-border/20 pb-3">
+                  <h3 className="font-bold text-sm uppercase tracking-wider text-primary">Detalhamento Financeiro da Consignação</h3>
+                  <span className="text-[11px] text-muted-foreground">Informe os valores estimados de venda, o valor mínimo líquido garantido ao proprietário e o prazo em dias.</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="total_value" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Valor Estimado de Venda (R$) *</Label>
+                    <Input
+                      id="total_value"
+                      type="number"
+                      step="0.01"
+                      {...register("total_value")}
+                      className="bg-black/30 text-lg font-bold text-foreground h-11"
+                    />
+                    {errors.total_value && <p className="text-xs text-destructive">{errors.total_value.message}</p>}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="consignation_owner_value" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Valor Líquido Garantido ao Proprietário (R$) *</Label>
+                    <Input
+                      id="consignation_owner_value"
+                      type="number"
+                      step="0.01"
+                      {...register("consignation_owner_value")}
+                      className="bg-black/30 text-lg font-bold text-emerald-400 h-11"
+                    />
+                    {errors.consignation_owner_value && <p className="text-xs text-destructive">{errors.consignation_owner_value.message}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="consignation_period_days" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Prazo Contratual de Consignação (Dias) *</Label>
+                    <Input
+                      id="consignation_period_days"
+                      type="number"
+                      {...register("consignation_period_days")}
+                      className="bg-black/30 text-xs h-11"
+                    />
+                    {errors.consignation_period_days && <p className="text-xs text-destructive">{errors.consignation_period_days.message}</p>}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-zinc-950/60 rounded-lg border border-border/40 space-y-3 mt-6">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <DollarSign size={14} className="text-primary" /> Demonstrativo da Intermediação Comercial (Comissão)
+                  </h4>
+                  <div className="space-y-2 text-xs pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Valor Estimado de Venda na Loja:</span>
+                      <span className="font-semibold text-foreground">{formatCurrency(totalValue || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-emerald-400">
+                      <span>Valor Líquido Garantido ao Proprietário (-):</span>
+                      <span className="font-mono font-bold">-{formatCurrency(consignationOwnerValue || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-border/20 pt-2 font-bold text-sm">
+                      <span className="text-foreground">Comissão / Sobrepreço Estimado da Loja:</span>
+                      <span className="font-mono text-primary font-extrabold text-lg">{formatCurrency(estimatedConsignationCommission)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1512,14 +1614,14 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                   <Input
                     id="warranty_period_days"
                     type="number"
-                    disabled={modality === "repasse" || modality === "compra"}
+                    disabled={modality === "repasse" || modality === "compra" || modality === "consignado"}
                     {...register("warranty_period_days")}
-                    className={`bg-black/30 text-xs h-9 ${(modality === "repasse" || modality === "compra") ? "opacity-70 cursor-not-allowed" : ""}`}
+                    className={`bg-black/30 text-xs h-9 ${(modality === "repasse" || modality === "compra" || modality === "consignado") ? "opacity-70 cursor-not-allowed" : ""}`}
                   />
                 </div>
               </div>
 
-              {modality !== "repasse" && modality !== "compra" && (
+              {modality !== "repasse" && modality !== "compra" && modality !== "consignado" && (
                 <div className="space-y-1.5">
                   <Label>Tipo de Garantia Concedida</Label>
                   <Select
@@ -1537,7 +1639,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 </div>
               )}
 
-              {modality !== "compra" && (
+              {modality !== "compra" && modality !== "consignado" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="warranty_text">Texto de Cláusula de Garantia *</Label>
                   <Textarea
@@ -1646,6 +1748,8 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 ? "TERMO DE COMPRA E VENDA DE VEÍCULO NO ESTADO (REPASSE)"
                 : modality === "compra"
                 ? "CONTRATO DE COMPRA DE VEÍCULO (AQUISIÇÃO)"
+                : modality === "consignado"
+                ? "CONTRATO DE CONSIGNAÇÃO DE VEÍCULO AUTOMOTOR"
                 : "CONTRATO DE COMPRA E VENDA DE VEÍCULO"}
             </span>
             <span className="text-[9px] text-primary border border-primary/30 px-1 py-0.5 rounded mt-1 font-normal uppercase font-sans">
@@ -1665,6 +1769,16 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 )}
                 <br />
                 - <strong>COMPRADOR:</strong> Empresa Cadastrada (conforme Configurações).
+              </>
+            ) : modality === "consignado" ? (
+              <>
+                - <strong>CONSIGNANTE (CLIENTE):</strong> {clientRegType === "existing" ? (
+                  selectedClient ? <span className="text-foreground underline">{selectedClient.name} (CPF: {formatCPF(selectedClient.cpf)})</span> : <span className="italic text-muted-foreground/45">[Selecione o Consignante]</span>
+                ) : (
+                  newClientData.name ? <span className="text-foreground underline">{newClientData.name} (CPF: {newClientData.cpf})</span> : <span className="italic text-muted-foreground/45">[Preencha os dados do cliente]</span>
+                )}
+                <br />
+                - <strong>CONSIGNATÁRIO:</strong> Empresa Cadastrada (conforme Configurações).
               </>
             ) : (
               <>
@@ -1825,6 +1939,20 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 - Líquido a Pagar ao Cliente: <strong className="text-emerald-400">{formatCurrency(purchaseAppraisedVal - purchaseFinesVal - purchaseDetranVal - purchaseFinancingVal)}</strong>
               </>
             )}
+            {modality === "consignado" && (
+              <>
+                <br />
+                - Tipo de Operação: <strong>Consignação de Veículo</strong>
+                <br />
+                - Valor Estimado de Venda: <strong>{formatCurrency(totalValue || 0)}</strong>
+                <br />
+                - Valor Líquido Garantido ao Proprietário: <strong>{formatCurrency(consignationOwnerValue || 0)}</strong>
+                <br />
+                - Comissão de Intermediação Estimada: <strong>{formatCurrency(estimatedConsignationCommission)}</strong>
+                <br />
+                - Prazo Contratual de Consignação: <strong>{watch("consignation_period_days")} dias</strong>
+              </>
+            )}
           </p>
 
           {(modality === "compra_venda" || modality === "repasse") && watch("former_owner_name") && (
@@ -1840,6 +1968,8 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
             <br />
             {modality === "repasse" ? (
               <span className="text-red-400 font-bold">VEÍCULO EM ESTADO DE REPASSE COMERCIAL (ISENTO DE GARANTIAS DE PÁTIO/MECÂNICA).</span>
+            ) : modality === "consignado" ? (
+              <span className="text-emerald-400">VEÍCULO EM REGIME DE CONSIGNAÇÃO (ISENTO DE GARANTIA DE VENDA NESTE INSTRUMENTO).</span>
             ) : (
               <span>Garantia de <strong>{warrantyPeriodDays} dias</strong>. Tipo: {warrantyType === "motor_cambio" ? "Motor e Câmbio (CDC)" : "Customizada completa"}.</span>
             )}

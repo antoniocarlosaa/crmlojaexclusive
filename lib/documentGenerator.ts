@@ -75,6 +75,9 @@ function getContractTextStructure(contract: Contract, signaturesList: Signature[
   } else if (contract.modality === "compra") {
     title = "RECIBO CONTRATO DE COMPRA DE VEÍCULO";
     modalityText = "Só Compra";
+  } else if (contract.modality === "consignado") {
+    title = "CONTRATO DE CONSIGNAÇÃO DE VEÍCULO AUTOMOTOR";
+    modalityText = "Consignação";
   }
 
   const paragraphs: string[] = [
@@ -85,9 +88,13 @@ function getContractTextStructure(contract: Contract, signaturesList: Signature[
     "1. DAS PARTES CONTRATANTES",
     contract.modality === "compra"
       ? `VENDEDOR: ${buyer?.name || "N/A"}, portador do CPF ${buyer?.cpf ? formatCPF(buyer.cpf) : "N/A"}, RG ${buyer?.rg || "N/A"}, CNH ${buyer?.cnh || "N/A"}, residente em ${buyer?.address || "N/A"}, ${buyer?.neighborhood || "N/A"}, ${buyer?.city || "N/A"}-${buyer?.state || "MA"}, doravante denominado simplesmente VENDEDOR.`
+      : contract.modality === "consignado"
+      ? `CONSIGNANTE: ${buyer?.name || "N/A"}, portador do CPF ${buyer?.cpf ? formatCPF(buyer.cpf) : "N/A"}, RG ${buyer?.rg || "N/A"}, CNH ${buyer?.cnh || "N/A"}, residente em ${buyer?.address || "N/A"}, ${buyer?.neighborhood || "N/A"}, ${buyer?.city || "N/A"}-${buyer?.state || "MA"}, doravante denominado simplesmente CONSIGNANTE.`
       : `VENDEDOR: ${sellerDetails}, representada neste ato por ${sellerName}, doravante denominado simplesmente VENDEDOR.`,
     contract.modality === "compra"
       ? `COMPRADOR: ${sellerDetails}, representada neste ato por ${sellerName}, doravante denominado simplesmente COMPRADOR.`
+      : contract.modality === "consignado"
+      ? `CONSIGNATÁRIO: ${sellerDetails}, representada neste ato por ${sellerName}, doravante denominado simplesmente CONSIGNATÁRIO.`
       : `COMPRADOR: ${buyer?.name || "N/A"}, portador do CPF ${buyer?.cpf ? formatCPF(buyer.cpf) : "N/A"}, RG ${buyer?.rg || "N/A"}, CNH ${buyer?.cnh || "N/A"}, residente em ${buyer?.address || "N/A"}, ${buyer?.neighborhood || "N/A"}, ${buyer?.city || "N/A"}-${buyer?.state || "MA"}, doravante denominado simplesmente COMPRADOR.`,
   ];
 
@@ -147,6 +154,14 @@ function getContractTextStructure(contract: Contract, signaturesList: Signature[
       `O valor total de avaliação do veículo objeto da aquisição é de R$ ${appraised}.`,
       `Após deduções de eventuais débitos junto ao Detran, multas ou valores necessários para quitação fiduciária faturada por instituição financeira, o valor líquido final a ser pago pela concessionária ao vendedor é de R$ ${net}.`
     );
+  } else if (contract.modality === "consignado") {
+    const consignationPeriod = contract.consignation_period_days || 60;
+    const consignationOwnerValStr = contract.consignation_owner_value ? formatCurrency(contract.consignation_owner_value) : "0,00";
+    paragraphs.push(
+      `O veículo objeto deste contrato é entregue pelo CONSIGNANTE ao CONSIGNATÁRIO em regime de consignação pelo prazo determinado de ${consignationPeriod} dias.`,
+      `O valor mínimo líquido garantido ao CONSIGNANTE (proprietário) em caso de venda definitiva do veículo é de R$ ${consignationOwnerValStr}.`,
+      `O valor estimado de venda ao público final é de R$ ${formattedTotal}. A remuneração do CONSIGNATÁRIO (loja) consistirá na diferença (sobrepreço) entre o valor final de venda e o valor mínimo líquido garantido ao proprietário.`
+    );
   }
 
   if (contract.negotiation_agreement) {
@@ -167,6 +182,10 @@ function getContractTextStructure(contract: Contract, signaturesList: Signature[
   } else if (contract.modality === "compra") {
     paragraphs.push(
       "GARANTIA DE PROCEDÊNCIA E EVICÇÃO: O VENDEDOR (Cliente) declara e garante, sob as penas da lei, que o veículo está livre e desembaraçado de ônus, gravames, restrições financeiras ou judiciais, responsabilizando-se civil e criminalmente por toda a procedência documental do veículo, bem como pelos riscos de evicção nos termos da legislação civil vigente."
+    );
+  } else if (contract.modality === "consignado") {
+    paragraphs.push(
+      "CLÁUSULA DE DEPOSITÁRIO E RESPONSABILIDADES: O CONSIGNATÁRIO assume a guarda e posse provisória do veículo na qualidade de depositário, obrigando-se a conservá-lo em perfeito estado. O CONSIGNANTE declara, sob as penas da lei, inexistirem vícios ocultos ou restrições graves que comprometam a segurança ou comercialização do veículo. Em caso de desistência ou expiração do prazo sem venda, o veículo será restituído ao CONSIGNANTE, que arcará com as despesas eventuais de retirada se previamente acordado."
     );
   } else {
     paragraphs.push(
@@ -206,9 +225,13 @@ function getContractTextStructure(contract: Contract, signaturesList: Signature[
     "ASSINATURAS E VALIDAÇÃO",
     contract.modality === "compra"
       ? `Vendedor (Cliente): ${buyer?.name || "N/A"} - ${signaturesList.some(s => s.role === "vendedor") ? "ASSINADO DIGITALMENTE" : "ASSINATURA PENDENTE"}`
+      : contract.modality === "consignado"
+      ? `Consignante (Cliente): ${buyer?.name || "N/A"} - ${signaturesList.some(s => s.role === "vendedor") ? "ASSINADO DIGITALMENTE" : "ASSINATURA PENDENTE"}`
       : `Vendedor (Loja): ${sellerName} - ${signaturesList.some(s => s.role === "vendedor") ? "ASSINADO DIGITALMENTE" : "ASSINATURA PENDENTE"}`,
     contract.modality === "compra"
       ? `Comprador (Loja): ${sellerName} - ${signaturesList.some(s => s.role === "comprador") ? "ASSINADO DIGITALMENTE" : "ASSINATURA PENDENTE"}`
+      : contract.modality === "consignado"
+      ? `Consignatário (Loja): ${sellerName} - ${signaturesList.some(s => s.role === "comprador") ? "ASSINADO DIGITALMENTE" : "ASSINATURA PENDENTE"}`
       : `Comprador (Cliente): ${buyer?.name || "N/A"} - ${signaturesList.some(s => s.role === "comprador") ? "ASSINADO DIGITALMENTE" : "ASSINATURA PENDENTE"}`
   );
 
@@ -388,8 +411,8 @@ export async function generatePDF(contract: Contract, signaturesList: Signature[
   const sellerSig = signaturesList.find(s => s.role === "vendedor");
 
   // Assinatura do Comprador
-  const buyerTitle = contract.modality === "compra" ? "COMPRADOR (LOJA):" : "COMPRADOR:";
-  const buyerName = contract.modality === "compra" 
+  const buyerTitle = contract.modality === "compra" ? "COMPRADOR (LOJA):" : contract.modality === "consignado" ? "CONSIGNATÁRIO (LOJA):" : "COMPRADOR:";
+  const buyerName = contract.modality === "compra" || contract.modality === "consignado"
     ? (contract.seller?.name || "Representante do Vendedor") 
     : (contract.client?.name || "N/A");
     
@@ -410,8 +433,8 @@ export async function generatePDF(contract: Contract, signaturesList: Signature[
   }
 
   // Assinatura do Vendedor
-  const sellerTitle = contract.modality === "compra" ? "VENDEDOR (CLIENTE):" : "VENDEDOR:";
-  const sellerNameText = contract.modality === "compra"
+  const sellerTitle = contract.modality === "compra" ? "VENDEDOR (CLIENTE):" : contract.modality === "consignado" ? "CONSIGNANTE (CLIENTE):" : "VENDEDOR:";
+  const sellerNameText = contract.modality === "compra" || contract.modality === "consignado"
     ? (contract.client?.name || "N/A")
     : (contract.seller?.name || "Representante do Vendedor");
     
