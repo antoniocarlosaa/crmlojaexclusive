@@ -2274,6 +2274,9 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                 <TabsTrigger value="form-basicos" className="text-xs py-1.5 px-3">Dados Básicos</TabsTrigger>
                 <TabsTrigger value="form-origem" className="text-xs py-1.5 px-3">Origem e Itens</TabsTrigger>
                 <TabsTrigger value="form-financeiro" className="text-xs py-1.5 px-3">Custos, Valores e Estado</TabsTrigger>
+                <TabsTrigger value="form-fotos" className="text-xs py-1.5 px-3 font-semibold text-teal-400 border border-teal-500/10 data-[state=active]:bg-teal-500/10 data-[state=active]:border-teal-500/30 flex items-center gap-1.5">
+                  <Sparkles size={12} /> Fotos e Divulgação
+                </TabsTrigger>
               </TabsList>
 
               {/* Form Tab 1: Dados Básicos */}
@@ -2374,80 +2377,6 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   <Textarea id="notes" placeholder="Detalhes de conservação, opcionais inclusos, etc..." {...register("notes")} className="bg-black/30 border-border/40 h-20 text-xs" />
                 </div>
 
-                {/* Photo section */}
-                <div className="border-t border-border/30 pt-4 space-y-6">
-                  {/* Gallery 1: Entrada / Vistoria */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
-                      <ClipboardList size={14} className="text-muted-foreground" /> Fotos de Entrada (Vistoria de Estoque)
-                    </h4>
-                    <p className="text-[10px] text-amber-500 font-semibold leading-relaxed max-w-2xl bg-amber-500/5 border border-amber-500/10 p-2 rounded">
-                      ⚠️ OBS: Registre o estado atual do veículo na entrada física do estoque (detalhes, avarias, vistoria geral).
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                      <div className="border border-dashed border-border/60 rounded-lg p-4 flex flex-col items-center justify-center bg-black/10 hover:bg-black/30 transition-all relative">
-                        <Upload size={20} className="text-muted-foreground mb-2" />
-                        <span className="text-[10px] text-muted-foreground font-semibold">Carregar Imagens de Entrada</span>
-                        <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                      </div>
-
-                      <div className="flex flex-col justify-center space-y-2">
-                        <Label htmlFor="img-url-entrada" className="text-[10px]">Cole URL direta da imagem</Label>
-                        <div className="flex gap-2">
-                          <Input id="img-url-entrada" placeholder="https://exemplo.com/foto-vistoria.jpg" value={newImageUrl} onChange={(e) => setNewImageUrl(e.target.value)} className="bg-black/30 flex-1 text-xs h-8" />
-                          <Button type="button" variant="outline" size="sm" onClick={handleAddImageUrl} className="h-8 text-xs px-3">Adicionar</Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {formPhotos.length > 0 && (
-                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 bg-secondary/5 border border-border/40 p-3 rounded-lg">
-                        {formPhotos.map((photoUrl, idx) => (
-                          <div key={idx} className="relative aspect-video w-full rounded overflow-hidden border border-border/40 group/photo">
-                            <img src={photoUrl} alt="" className="object-cover w-full h-full" />
-                            <button type="button" onClick={() => removePhoto(idx)} className="absolute top-1 right-1 bg-red-600/90 text-white rounded-full p-0.5 hover:bg-red-700 transition-colors opacity-0 group-hover/photo:opacity-100"><X size={8} /></button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Gallery 2: Catálogo / Pronto para venda */}
-                  <div className="space-y-3 pt-4 border-t border-border/25">
-                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
-                      <Sparkles size={14} className="text-emerald-400" /> Fotos do Catálogo (Pronto para Venda / Publicação)
-                    </h4>
-                    <p className="text-[10px] text-emerald-400 font-semibold leading-relaxed max-w-2xl bg-emerald-500/5 border border-emerald-500/10 p-2 rounded">
-                      ✨ IMPORTANTE: Estas são as fotos que serão enviadas para o catálogo online e anúncios. Carregue fotos tratadas, limpas e profissionais do veículo.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                      <div className="border border-dashed border-border/60 rounded-lg p-4 flex flex-col items-center justify-center bg-black/10 hover:bg-black/30 transition-all relative">
-                        <Upload size={20} className="text-emerald-400/80 mb-2" />
-                        <span className="text-[10px] text-muted-foreground font-semibold">Carregar Imagens do Catálogo</span>
-                        <input type="file" multiple accept="image/*" onChange={handleFileUploadReady} className="absolute inset-0 opacity-0 cursor-pointer" />
-                      </div>
-
-                      <div className="flex flex-col justify-center space-y-2">
-                        <Label htmlFor="img-url-catalogo" className="text-[10px]">Cole URL direta da imagem de catálogo</Label>
-                        <div className="flex gap-2">
-                          <Input id="img-url-catalogo" placeholder="https://exemplo.com/foto-pronto.jpg" value={newImageUrlReady} onChange={(e) => setNewImageUrlReady(e.target.value)} className="bg-black/30 flex-1 text-xs h-8" />
-                          <Button type="button" variant="outline" size="sm" onClick={handleAddImageUrlReady} className="h-8 text-xs px-3">Adicionar</Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {formPhotosReady.length > 0 && (
-                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 bg-secondary/5 border border-border/40 p-3 rounded-lg">
-                        {formPhotosReady.map((photoUrl, idx) => (
-                          <div key={idx} className="relative aspect-video w-full rounded overflow-hidden border border-emerald-500/20 group/photo-ready">
-                            <img src={photoUrl} alt="" className="object-cover w-full h-full" />
-                            <button type="button" onClick={() => removePhotoReady(idx)} className="absolute top-1 right-1 bg-red-600/90 text-white rounded-full p-0.5 hover:bg-red-700 transition-colors opacity-0 group-hover/photo-ready:opacity-100"><X size={8} /></button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
               </TabsContent>
 
               {/* Form Tab 2: Origem e Itens entregues */}
@@ -3127,6 +3056,94 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   </div>
                 </div>
               </TabsContent>
+
+              {/* Form Tab 4: Fotos e Divulgação (Mídia e Catálogo) */}
+              <TabsContent value="form-fotos" className="space-y-6 animate-fadeIn">
+                {/* Visual Eye-Catching Header Banner */}
+                <div className="border border-dashed border-teal-500/30 rounded-xl p-5 bg-teal-950/20 text-teal-400 flex items-start gap-3.5">
+                  <Sparkles className="mt-0.5 shrink-0 text-teal-400" size={18} />
+                  <div>
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-teal-300">Galeria de Divulgação & Catálogo Online</h4>
+                    <p className="text-[10px] text-teal-300/80 mt-1 leading-relaxed">
+                      Sinalize e prepare o veículo para o catálogo digital. Fotos profissionais do catálogo (pronto para venda) são enviadas diretamente para a divulgação nos canais online e anúncios da loja.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border border-dashed border-zinc-700/60 rounded-xl p-6 bg-zinc-950/40 space-y-6">
+                  {/* Gallery 1: Entrada / Vistoria */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
+                      <ClipboardList size={14} className="text-muted-foreground" /> 1. Fotos de Entrada (Vistoria de Estoque)
+                    </h4>
+                    <p className="text-[10px] text-amber-500 font-semibold leading-relaxed max-w-2xl bg-amber-500/5 border border-amber-500/10 p-2 rounded">
+                      ⚠️ OBS: Registre o estado atual do veículo na entrada física do estoque (detalhes, avarias, vistoria geral).
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                      <div className="border border-dashed border-border/60 rounded-lg p-4 flex flex-col items-center justify-center bg-black/10 hover:bg-black/30 transition-all relative">
+                        <Upload size={20} className="text-muted-foreground mb-2" />
+                        <span className="text-[10px] text-muted-foreground font-semibold">Carregar Imagens de Entrada</span>
+                        <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </div>
+
+                      <div className="flex flex-col justify-center space-y-2">
+                        <Label htmlFor="img-url-entrada" className="text-[10px]">Cole URL direta da imagem</Label>
+                        <div className="flex gap-2">
+                          <Input id="img-url-entrada" placeholder="https://exemplo.com/foto-vistoria.jpg" value={newImageUrl} onChange={(e) => setNewImageUrl(e.target.value)} className="bg-black/30 flex-1 text-xs h-8" />
+                          <Button type="button" variant="outline" size="sm" onClick={handleAddImageUrl} className="h-8 text-xs px-3">Adicionar</Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {formPhotos.length > 0 && (
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 bg-secondary/5 border border-border/40 p-3 rounded-lg">
+                        {formPhotos.map((photoUrl, idx) => (
+                          <div key={idx} className="relative aspect-video w-full rounded overflow-hidden border border-border/40 group/photo">
+                            <img src={photoUrl} alt="" className="object-cover w-full h-full" />
+                            <button type="button" onClick={() => removePhoto(idx)} className="absolute top-1 right-1 bg-red-600/90 text-white rounded-full p-0.5 hover:bg-red-700 transition-colors opacity-0 group-hover/photo:opacity-100"><X size={8} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Gallery 2: Catálogo / Pronto para venda */}
+                  <div className="space-y-3 pt-4 border-t border-border/25">
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
+                      <Sparkles size={14} className="text-emerald-400" /> 2. Fotos do Catálogo (Pronto para Venda / Publicação)
+                    </h4>
+                    <p className="text-[10px] text-emerald-400 font-semibold leading-relaxed max-w-2xl bg-emerald-500/5 border border-emerald-500/10 p-2 rounded">
+                      ✨ IMPORTANTE: Estas são as fotos que serão enviadas para o catálogo online e anúncios. Carregue fotos tratadas, limpas e profissionais do veículo.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                      <div className="border border-dashed border-border/60 rounded-lg p-4 flex flex-col items-center justify-center bg-black/10 hover:bg-black/30 transition-all relative">
+                        <Upload size={20} className="text-emerald-400/80 mb-2" />
+                        <span className="text-[10px] text-muted-foreground font-semibold">Carregar Imagens do Catálogo</span>
+                        <input type="file" multiple accept="image/*" onChange={handleFileUploadReady} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </div>
+
+                      <div className="flex flex-col justify-center space-y-2">
+                        <Label htmlFor="img-url-catalogo" className="text-[10px]">Cole URL direta da imagem de catálogo</Label>
+                        <div className="flex gap-2">
+                          <Input id="img-url-catalogo" placeholder="https://exemplo.com/foto-pronto.jpg" value={newImageUrlReady} onChange={(e) => setNewImageUrlReady(e.target.value)} className="bg-black/30 flex-1 text-xs h-8" />
+                          <Button type="button" variant="outline" size="sm" onClick={handleAddImageUrlReady} className="h-8 text-xs px-3">Adicionar</Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {formPhotosReady.length > 0 && (
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 bg-secondary/5 border border-border/40 p-3 rounded-lg">
+                        {formPhotosReady.map((photoUrl, idx) => (
+                          <div key={idx} className="relative aspect-video w-full rounded overflow-hidden border border-emerald-500/20 group/photo-ready">
+                            <img src={photoUrl} alt="" className="object-cover w-full h-full" />
+                            <button type="button" onClick={() => removePhotoReady(idx)} className="absolute top-1 right-1 bg-red-600/90 text-white rounded-full p-0.5 hover:bg-red-700 transition-colors opacity-0 group-hover/photo-ready:opacity-100"><X size={8} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
             </Tabs>
 
             <DialogFooter className="pt-4 border-t border-border/20 flex items-center justify-between sm:justify-between w-full">
@@ -3160,7 +3177,17 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   <Button type="button" variant="ghost" onClick={() => setActiveFormTab("form-origem")} disabled={isSubmitting}>
                     Voltar
                   </Button>
-                  <Button type="submit" disabled={isSubmitting} className="font-semibold">
+                  <Button type="button" onClick={() => setActiveFormTab("form-fotos")} className="font-semibold gap-1 bg-teal-600 hover:bg-teal-700 text-white">
+                    Próximo (Fotos) <ArrowRight size={14} />
+                  </Button>
+                </>
+              )}
+              {activeFormTab === "form-fotos" && (
+                <>
+                  <Button type="button" variant="ghost" onClick={() => setActiveFormTab("form-financeiro")} disabled={isSubmitting}>
+                    Voltar
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting} className="font-semibold bg-primary hover:bg-primary/90 text-white">
                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {selectedVehicle ? "Salvar Alterações" : "Cadastrar Veículo"}
                   </Button>

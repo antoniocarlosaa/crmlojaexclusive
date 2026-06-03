@@ -51,48 +51,64 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       href: "/vehicles",
       icon: Car,
       roles: ["admin", "vendedor"],
+      colorClass: "bg-cyan-500/10 border-cyan-500/20 text-cyan-400",
+      iconColor: "text-cyan-400",
     },
     {
       name: "Venda",
       href: "/contracts/new",
       icon: ShoppingCart,
       roles: ["admin", "vendedor"],
+      colorClass: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+      iconColor: "text-emerald-400",
     },
     {
       name: "Dashboard",
       href: "/dashboard",
       icon: LayoutDashboard,
       roles: ["admin", "vendedor", "operacional", "financeiro"],
+      colorClass: "bg-indigo-500/10 border-indigo-500/20 text-indigo-400",
+      iconColor: "text-indigo-400",
     },
     {
       name: "Clientes",
       href: "/clients",
       icon: Users,
       roles: ["admin", "vendedor"],
+      colorClass: "bg-blue-500/10 border-blue-500/20 text-blue-400",
+      iconColor: "text-blue-400",
     },
     {
       name: "Contratos",
       href: "/contracts",
       icon: FileText,
       roles: ["admin", "vendedor"],
+      colorClass: "bg-purple-500/10 border-purple-500/20 text-purple-400",
+      iconColor: "text-purple-400",
     },
     {
       name: "Pós-Venda (CRM)",
       href: "/transfer",
       icon: FileCheck,
       roles: ["admin", "operacional"],
+      colorClass: "bg-rose-500/10 border-rose-500/20 text-rose-400",
+      iconColor: "text-rose-400",
     },
     {
       name: "Financeiro",
       href: "/finance",
       icon: TrendingUp,
       roles: ["admin", "financeiro"],
+      colorClass: "bg-amber-500/10 border-amber-500/20 text-amber-400",
+      iconColor: "text-amber-400",
     },
     {
       name: "Configurações",
       href: "/settings",
       icon: Settings,
       roles: ["admin"],
+      colorClass: "bg-zinc-500/10 border-zinc-500/20 text-zinc-400",
+      iconColor: "text-zinc-400",
     },
   ];
 
@@ -176,15 +192,21 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
               <Link
                 key={item.name}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all ${
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all group ${
                   isActive
-                    ? "bg-accent/20 text-primary border-l-2 border-primary"
-                    : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
+                    ? "bg-zinc-800/40 text-foreground border border-zinc-800/50"
+                    : "text-muted-foreground hover:bg-zinc-900/30 hover:text-foreground border border-transparent"
                 }`}
                 onClick={() => setIsOpen(false)}
               >
-                <Icon size={18} className={isActive ? "text-primary" : ""} />
-                <span>{item.name}</span>
+                <div className={`p-1.5 rounded-lg border transition-all ${
+                  isActive
+                    ? (item as any).colorClass
+                    : "bg-zinc-950/40 border-zinc-900 text-muted-foreground group-hover:bg-zinc-900/40 group-hover:border-zinc-800"
+                }`}>
+                  <Icon size={15} className={`transition-colors ${isActive ? "" : `group-hover:${(item as any).iconColor}`}`} />
+                </div>
+                <span className="transition-colors">{item.name}</span>
               </Link>
             );
           })}
